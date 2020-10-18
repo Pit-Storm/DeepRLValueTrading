@@ -24,7 +24,8 @@ FORMAT = "json"
 
 ENDPOINTS = [
     "eod",
-    "technical"
+    "technical",
+    "fundamentals"
 ]
 
 ###
@@ -55,9 +56,13 @@ def make_df(data, endpoint):
         temp = pd.DataFrame.from_dict(data=data)
         temp["date"] = pd.to_datetime(arg=temp["date"], format="%Y-%m-%d")
         temp["volume"] = temp["volume"].astype("Int32")
-        return temp
+    elif endpoint is "technical":
+        temp = pd.DataFrame.from_dict(data=data)
+        temp["date"] = pd.to_datetime(arg=temp["date"], format="%Y-%m-%d")
     else:
         raise NotImplementedError("DF building for other Endpoints must be implemented.")
+
+    return temp
 
 ###
 # API functions
@@ -89,17 +94,17 @@ def get_data(endpoint, symbol, exchange, params, fmt=FORMAT):
     
     if endpoint is "eod":
         ret = requests.get(url = url, params=params).json()
-    if endpoint is "technical":
+    elif endpoint is "technical":
         if "period" in params:
             if type(params["period"]) is not int:
                 raise TypeError("When calling 'technical' endpoint the period has to be valid integer.")
         if "function" not in params:
-            raise ValueError("Parameter 'function' is required fot the 'technical' endpoint.")
+            raise ValueError("Parameter 'function' is required for the 'technical' endpoint.")
         ret = requests.get(url=url, params=params).json()
-
+    elif endpoint is "fundamentals":
+        params.pop("fmt")
+        ret = requests.get(url=url, params=params).json()
+    else:
+        raise NotImplementedError("The given endpoint is not implemented.")
     return ret
 
-def get_ti(symbol, exchange, params, fmt=FORMAT):
-    """
-
-    """

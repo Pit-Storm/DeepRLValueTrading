@@ -10,16 +10,16 @@ import pandas as pd
 # Reading Data
 ###
 
-endpoint = "eod"
+endpoint = "technical"
 symbol = "AAPL"
 exchange = "US"
 
 params = {
-    "period": "d",
-    "order": "a"
+    "order": "a",
+    "function": "sma"
 }
-
 # %%
 tmp = ehd.get_data(endpoint=endpoint, symbol=symbol, exchange=exchange, params=params)
-eod_aapl = ehd.make_df(data=tmp, endpoint=endpoint)
+
 # %%
+ti_sma_aapl = ehd.make_df(data=tmp, endpoint=endpoint)

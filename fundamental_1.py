@@ -10,7 +10,7 @@ import pandas as pd
 # Reading Data
 ###
 
-endpoint = "eod"
+endpoint = "fundamentals"
 symbol = "AAPL"
 exchange = "US"
 
@@ -21,5 +21,6 @@ params = {
 
 # %%
 tmp = ehd.get_data(endpoint=endpoint, symbol=symbol, exchange=exchange, params=params)
-eod_aapl = ehd.make_df(data=tmp, endpoint=endpoint)
+df_tmp = pd.DataFrame.from_dict(data=tmp["Financials"]["Balance_Sheet"]["quarterly"]["2020-06-30"], orient="index").transpose()
 # %%
+df_tmp.head()

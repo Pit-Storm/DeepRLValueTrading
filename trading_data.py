@@ -21,5 +21,9 @@ params = {
 
 # %%
 tmp = ehd.get_data(endpoint=endpoint, symbol=symbol, exchange=exchange, params=params)
-eod_aapl = ehd.make_df(data=tmp, endpoint=endpoint)
+stock_aapl = ehd.make_df(data=tmp, endpoint=endpoint)
+#%%
+stock_aapl.columns
+#%%
+stock_aapl.tail()
 # %%

@@ -5,6 +5,7 @@
 import os
 import requests
 import pandas as pd
+from stockstats import StockDataFrame
 
 ###
 # Constants
@@ -59,6 +60,32 @@ def make_df(data, endpoint):
         temp = pd.DataFrame.from_dict(data=data)
         temp["date"] = pd.to_datetime(arg=temp["date"], format="%Y-%m-%d")
         temp["volume"] = temp["volume"].astype("Int32")
+
+        # Create stockstats DF
+        temp = StockDataFrame.retype(temp)
+
+        # Get ATR
+        temp["atr"] = temp['atr']
+        temp.drop(columns=["tr"], inplace=True)
+
+        # Get ROC for last 252 and 126 trading days
+        temp["close_-252_r"] = temp["close_-252_r"]
+        temp["close_-126_r"] = temp["close_-126_r"]
+        temp.drop(columns=["close_-1_s"], inplace=True)
+
+        # Calculate A/D line        
+        # We need Money float value first
+        temp["mfv"] = (((temp["close"] - temp["low"]) - (temp["high"] - temp["close"])) + (temp["high"] - temp["low"])) * temp["volume"]
+
+        # Now we can calculate AD-line
+        temp["ad"] = 0
+        for idx in range(0, len(temp.index)):
+            if idx == 0:
+                temp["ad"].iloc[(idx),] = temp["mfv"].iloc[(idx),]
+            else:
+                temp["ad"].iloc[(idx),] = temp["mfv"].iloc[(idx),] + temp["ad"].iloc[(idx-1),]
+        # and now we can drop mfv
+        temp.drop(columns=["mfv"], inplace=True)
     elif endpoint is "technical":
         temp = pd.DataFrame.from_dict(data=data)
         temp["date"] = pd.to_datetime(arg=temp["date"], format="%Y-%m-%d")

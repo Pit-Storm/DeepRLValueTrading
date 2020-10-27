@@ -36,20 +36,25 @@ ENDPOINTS = [
 # Helper Functions
 ###
 
-def make_df(data, endpoint):
+def make_df(data, endpoint,call_filter=None):
     """
     Builds a cleaned DF in dependency of data_type. So its ready to go.
     
     args:
         - data (dict): json response of api call
         - endpoint (string): From which endpoint (eod etc.) is the data?
+        - call_filter (string): used for endpoint "fundamentals" to generate the fitting df.
     returns:
         - pandas DataFrame object
     """
-    if type(data) is not list:
-        raise TypeError("Outter type of data input has to be list.")
-    if type(data[0]) is not dict:
-        raise TypeError("Inner type of data input has to be dict")
+    if type(data) is list:
+        if type(data[0]) is not dict:
+            raise TypeError("Inner type of list input has to be dict")
+    elif type(data) is dict:
+        pass
+    else:
+        raise TypeError("Outter type of data input has to be list or dict.")
+
 
     if type(endpoint) is not str:
         raise TypeError("Content type of endpoint has to be str.")
@@ -89,6 +94,17 @@ def make_df(data, endpoint):
     elif endpoint is "technical":
         temp = pd.DataFrame.from_dict(data=data)
         temp["date"] = pd.to_datetime(arg=temp["date"], format="%Y-%m-%d")
+    elif endpoint is "fundamentals":
+        if call_filter == "Earnings::History":
+            temp = pd.DataFrame.from_dict(data=data).transpose().drop(columns=["date"])
+            temp.index = pd.to_datetime(temp.index, format="%Y-%m-%d")
+            temp["reportDate"] = pd.to_datetime(temp["reportDate"], format="%Y-%m-%d")
+            temp["epsActual"] = pd.to_numeric(temp["epsActual"])
+            temp["epsEstimate"] = pd.to_numeric(temp["epsEstimate"])
+            temp["epsDifference"] = pd.to_numeric(temp["epsDifference"])
+            temp["surprisePercent"] = pd.to_numeric(temp["surprisePercent"])
+        else:
+            raise NotImplementedError("Given call_filter argument is not implemented or unset.")
     else:
         raise NotImplementedError("DF building for other Endpoints must be implemented.")
 

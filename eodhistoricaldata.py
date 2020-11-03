@@ -98,11 +98,17 @@ def make_df(data, endpoint,call_filter=None):
         if call_filter == "Earnings::History":
             temp = pd.DataFrame.from_dict(data=data).transpose().drop(columns=["date"])
             temp.index = pd.to_datetime(temp.index, format="%Y-%m-%d")
+            for column in temp.columns:
+                temp[column] = pd.to_numeric(temp[column], errors="ignore")
             temp["reportDate"] = pd.to_datetime(temp["reportDate"], format="%Y-%m-%d")
-            temp["epsActual"] = pd.to_numeric(temp["epsActual"])
-            temp["epsEstimate"] = pd.to_numeric(temp["epsEstimate"])
-            temp["epsDifference"] = pd.to_numeric(temp["epsDifference"])
-            temp["surprisePercent"] = pd.to_numeric(temp["surprisePercent"])
+        elif call_filter == "Financials::Balance_Sheet::quarterly":
+            temp = pd.DataFrame.from_dict(data=data).transpose()
+            temp.index = pd.to_datetime(temp.index, format="%Y-%m-%d")
+            temp.drop(columns=["date"], inplace=True)
+            for column in temp.columns:
+                temp[column] = pd.to_numeric(temp[column], errors="ignore")
+            temp["filing_date"] = pd.to_datetime(temp["filing_date"], format="%Y-%m-%d")
+            temp["book_value"] = temp["totalAssets"] - temp["totalLiab"]
         else:
             raise NotImplementedError("Given call_filter argument is not implemented or unset.")
     else:

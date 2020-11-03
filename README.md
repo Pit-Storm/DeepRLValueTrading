@@ -2,6 +2,11 @@
 
 Provides wide variaty of Data through API access. Payment needed.
 
+## TODO:
+
+* [ ] Get FX_USD_MACD
+* [ ] Rearrange DF like it is in DRL4trading repo
+
 ## Prerequisites
 
 * Create a file named `API_KEY` (it is ignorded from git)

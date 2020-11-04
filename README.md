@@ -6,6 +6,7 @@ Provides wide variaty of Data through API access. Payment needed.
 
 * [ ] Get FX_USD_MACD
 * [ ] Rearrange DF like it is in DRL4trading repo
+* [ ] Get historical Components of SP500 (GSPC.INDX)
 
 ## Prerequisites
 

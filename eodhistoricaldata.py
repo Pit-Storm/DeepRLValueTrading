@@ -68,29 +68,32 @@ def make_df(data, endpoint,call_filter=None):
 
         # Create stockstats DF
         temp = StockDataFrame.retype(temp)
+        if call_filter == None:
 
-        # Get ATR
-        temp["atr"] = temp['atr']
-        temp.drop(columns=["tr"], inplace=True)
+            # Get ATR
+            temp["atr"] = temp['atr']
+            temp.drop(columns=["tr"], inplace=True)
 
-        # Get ROC for last 252 and 126 trading days
-        temp["close_-252_r"] = temp["close_-252_r"]
-        temp["close_-126_r"] = temp["close_-126_r"]
-        temp.drop(columns=["close_-1_s"], inplace=True)
+            # Get ROC for last 252 and 126 trading days
+            temp["close_-252_r"] = temp["close_-252_r"]
+            temp["close_-126_r"] = temp["close_-126_r"]
+            temp.drop(columns=["close_-1_s"], inplace=True)
 
-        # Calculate A/D line        
-        # We need Money float value first
-        temp["mfv"] = (((temp["close"] - temp["low"]) - (temp["high"] - temp["close"])) + (temp["high"] - temp["low"])) * temp["volume"]
+            # Calculate A/D line        
+            # We need Money float value first
+            temp["mfv"] = (((temp["close"] - temp["low"]) - (temp["high"] - temp["close"])) + (temp["high"] - temp["low"])) * temp["volume"]
 
-        # Now we can calculate AD-line
-        temp["ad"] = 0
-        for idx in range(0, len(temp.index)):
-            if idx == 0:
-                temp["ad"].iloc[(idx),] = temp["mfv"].iloc[(idx),]
-            else:
-                temp["ad"].iloc[(idx),] = temp["mfv"].iloc[(idx),] + temp["ad"].iloc[(idx-1),]
-        # and now we can drop mfv
-        temp.drop(columns=["mfv"], inplace=True)
+            # Now we can calculate AD-line
+            temp["ad"] = 0
+            for idx in range(0, len(temp.index)):
+                if idx == 0:
+                    temp["ad"].iloc[(idx),] = temp["mfv"].iloc[(idx),]
+                else:
+                    temp["ad"].iloc[(idx),] = temp["mfv"].iloc[(idx),] + temp["ad"].iloc[(idx-1),]
+            # and now we can drop mfv
+            temp.drop(columns=["mfv"], inplace=True)
+        elif call_filter == "MONEY":
+            temp["MACD_EMA_SHORT"] = temp["MACD_EMA_SHORT"]
     elif endpoint is "technical":
         temp = pd.DataFrame.from_dict(data=data)
         temp["date"] = pd.to_datetime(arg=temp["date"], format="%Y-%m-%d")

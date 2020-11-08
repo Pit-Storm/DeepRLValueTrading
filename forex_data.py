@@ -21,8 +21,8 @@ params = {
 
 # %%
 tmp = ehd.get_data(endpoint=endpoint, symbol=symbol, exchange=exchange, params=params)
-tmp_df = ehd.make_df(data=tmp, endpoint=endpoint)
+tmp_df = ehd.make_df(data=tmp, endpoint=endpoint, call_filter=symbol)
 
-# %%
 tmp_df.head()
+
 # %%

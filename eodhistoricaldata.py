@@ -92,8 +92,8 @@ def make_df(data, endpoint,call_filter=None):
                     temp["ad"].iloc[(idx),] = temp["mfv"].iloc[(idx),] + temp["ad"].iloc[(idx-1),]
             # and now we can drop mfv
             temp.drop(columns=["mfv"], inplace=True)
-        elif call_filter == "MONEY":
-            temp["MACD_EMA_SHORT"] = temp["MACD_EMA_SHORT"]
+        elif call_filter == "ECBEURUSD":
+            temp["macd"] = temp["macd"]
     elif endpoint is "technical":
         temp = pd.DataFrame.from_dict(data=data)
         temp["date"] = pd.to_datetime(arg=temp["date"], format="%Y-%m-%d")

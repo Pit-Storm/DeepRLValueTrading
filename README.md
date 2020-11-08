@@ -4,9 +4,11 @@ Provides wide variaty of Data through API access. Payment needed.
 
 ## TODO:
 
-* [ ] Get FX_USD_MACD
+* [x] Get FX_USD_MACD
+* [ ] Check the calculation of MACD
 * [ ] Rearrange DF like it is in DRL4trading repo
 * [ ] Get historical Components of SP500 (GSPC.INDX)
+* [ ] Get government Bond for caclulating sharpe-ratio
 
 ## Prerequisites
 

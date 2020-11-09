@@ -6,6 +6,7 @@ import os
 import requests
 import pandas as pd
 from stockstats import StockDataFrame
+import requests_cache
 
 ###
 # Constants
@@ -31,6 +32,8 @@ ENDPOINTS = [
     "technical",
     "fundamentals"
 ]
+
+requests_cache.install_cache(cache_name="ehd", backend="sqlite", expire_after=float(60*60*24), ignored_parameters=["api_token"])
 
 ###
 # Helper Functions
@@ -64,7 +67,7 @@ def make_df(data, endpoint,call_filter=None):
     if endpoint is "eod":
         temp = pd.DataFrame.from_dict(data=data)
         temp["date"] = pd.to_datetime(arg=temp["date"], format="%Y-%m-%d")
-        temp["volume"] = temp["volume"].astype("Int32")
+        temp["volume"] = temp["volume"].astype(dtype="Int64",errors="ignore")
 
         # Create stockstats DF
         temp = StockDataFrame.retype(temp)
@@ -104,6 +107,11 @@ def make_df(data, endpoint,call_filter=None):
             for column in temp.columns:
                 temp[column] = pd.to_numeric(temp[column], errors="ignore")
             temp["reportDate"] = pd.to_datetime(temp["reportDate"], format="%Y-%m-%d")
+        elif call_filter == "outstandingShares::quarterly":
+            temp = pd.DataFrame.from_dict(data=data).transpose()
+            temp["date"] = pd.to_datetime(temp["dateFormatted"], format="%Y-%m-%d")
+            temp["shares"] = temp["shares"].astype(dtype="Int64",errors="ignore")
+            temp.drop(columns=["sharesMln","dateFormatted"])
         elif call_filter == "Financials::Balance_Sheet::quarterly":
             temp = pd.DataFrame.from_dict(data=data).transpose()
             temp.index = pd.to_datetime(temp.index, format="%Y-%m-%d")
@@ -112,6 +120,14 @@ def make_df(data, endpoint,call_filter=None):
                 temp[column] = pd.to_numeric(temp[column], errors="ignore")
             temp["filing_date"] = pd.to_datetime(temp["filing_date"], format="%Y-%m-%d")
             temp["book_value"] = temp["totalAssets"] - temp["totalLiab"]
+        elif call_filter == "HistoricalTickerComponents":
+            temp = pd.DataFrame.from_dict(data=data).transpose()
+            temp["StartDate"] = pd.to_datetime(temp["StartDate"], format="%Y-%m-%d")
+            temp["EndDate"] = pd.to_datetime(temp["EndDate"], format="%Y-%m-%d")
+            temp["IsActiveNow"] = temp["IsActiveNow"].astype("Bool")
+            temp["IsDelisted"] = temp["IsDelisted"].astype("bool")
+        elif call_filter == "Components":
+            temp = pd.DataFrame.from_dict(data=data).transpose()
         else:
             raise NotImplementedError("Given call_filter argument is not implemented or unset.")
     else:
@@ -148,7 +164,10 @@ def get_data(endpoint, symbol, exchange, params, fmt=FORMAT):
     params["fmt"] = fmt
     
     if endpoint is "eod":
-        ret = requests.get(url = url, params=params).json()
+        ret = requests.get(url = url, params=params)
+        if ret.status_code != requests.codes["OK"]:
+            raise ValueError("API returned " + str(ret.status_code) + ": " + ret.text)
+        ret = ret.json()
     elif endpoint is "technical":
         if "period" in params:
             if type(params["period"]) is not int:

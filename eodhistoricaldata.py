@@ -104,6 +104,7 @@ def make_df(data, endpoint,call_filter=None):
         if call_filter == "Earnings::History":
             temp = pd.DataFrame.from_dict(data=data).transpose().drop(columns=["date"])
             temp.index = pd.to_datetime(temp.index, format="%Y-%m-%d")
+            temp = temp.rename_axis(["date"])
             for column in temp.columns:
                 temp[column] = pd.to_numeric(temp[column], errors="ignore")
             temp["reportDate"] = pd.to_datetime(temp["reportDate"], format="%Y-%m-%d")
@@ -111,10 +112,12 @@ def make_df(data, endpoint,call_filter=None):
             temp = pd.DataFrame.from_dict(data=data).transpose()
             temp["date"] = pd.to_datetime(temp["dateFormatted"], format="%Y-%m-%d")
             temp["shares"] = temp["shares"].astype(dtype="Int64",errors="ignore")
-            temp.drop(columns=["sharesMln","dateFormatted"])
+            temp = temp.set_index("date")
+            temp = temp.drop(columns=["sharesMln","dateFormatted"])
         elif call_filter == "Financials::Balance_Sheet::quarterly":
             temp = pd.DataFrame.from_dict(data=data).transpose()
             temp.index = pd.to_datetime(temp.index, format="%Y-%m-%d")
+            temp = temp.rename_axis(["date"])
             temp.drop(columns=["date"], inplace=True)
             for column in temp.columns:
                 temp[column] = pd.to_numeric(temp[column], errors="ignore")

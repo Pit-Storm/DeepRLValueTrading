@@ -53,5 +53,8 @@ for key, value in stocks_data.items():
 # stocks are components of the indices from 2020-11-09
 with open('stocks.txt', 'w') as f:
     for stock in stocks_data.keys():
-        f.write("%s\n" % stock)
+        f.write(f"{stock}\n")
 # %%
+### IMPORTANT ###
+# The Ticker SAN.MC has been deleted manually, because the symbol is same to SAN.PA which is a bigger company.
+# The Ticker UNA.AS has been deleted manually because it has no historical shares data.

@@ -56,21 +56,26 @@ for stock in stocks:
 
 # %%
 stocks_df = eps_df.join(bv_df).join(shares_df)
-# %%
 stocks_df = stocks_df.sort_index()
+# %%
+dates = stocks_df.index.get_level_values(level="date")
 stocks_df = stocks_df[
-    (stocks_df.index.get_level_values(level="date") >= "2000-01-01") 
-    & (stocks_df.index.get_level_values(level="date") <= "2019-12-31")
+    (dates >= "2000-01-01") 
+    & (dates <= "2019-12-31")
 ]
 
+stocks_df["shares"] = stocks_df["shares"].fillna(stocks_df["commonStockSharesOutstanding"])
+
+stocks_df = stocks_df.loc[slice(None),("epsActual","book_value","shares")]
 # %%
-# stocks_df = stocks_df.loc[():(),("epsActual","book_value","shares")]
+stocks_df.reset_index().to_csv("stocksdata_fundamental.csv")
 # %%
-stocks_df.columns.to_list()
+# Handle missing values for fundamental data
+# symbols = stocks_df.index.get_level_values(level="symbol")
+
+# for symbol in symbols:
+#     stocks_df.loc[(slice(None),symbol),("book_value")] = stocks_df.loc[(slice(None),symbol),("book_value")].interpolate(limit=4,limit_area="inside")
+#     stocks_df.loc[(slice(None),symbol),("shares")] = stocks_df.loc[(slice(None),symbol),("shares")].interpolate(limit=4,limit_area="inside")
+
+# stocks_df = stocks_df.fillna(0)
 # %%
-stocks_df[(stocks_df["shares"].isna()) & (stocks_df["commonStockSharesOutstanding"].isna())].index.get_level_values(level="date").unique().shape
-# %%
-(stocks_df.index.get_level_values(level="symbol") == "CSCO")
-# %%
-# TODO: interpolate or fill the missing valuese in "shares" series.
-# Maybe with formular: shares = Earnings / EPS

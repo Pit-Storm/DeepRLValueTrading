@@ -32,7 +32,6 @@ for stock in stocks:
 
 stocks_df = (stocks_df.sort_index()
     .loc[("2000-01-03",):("2019-12-31",)]
-    .fillna(method="bfill")
 )
 # %%
 stocks_df.reset_index().to_csv("stocksdata_trading.csv")

@@ -5,8 +5,8 @@ Provides wide variaty of Data through API access. Payment needed.
 ## TODO:
 
 * [x] Get FX_USD_MACD
-* [ ] stich stocks dfs togeter
-* [ ] Check the calculation of MACD
+* [x] stich stocks dfs togeter
+* [x] Check the calculation of MACD
 * [ ] Rearrange DF like it is in DRL4trading repo
 * [x] Get tradable components
 * [ ] Get government Bond for calculating sharpe-ratio

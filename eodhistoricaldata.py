@@ -68,6 +68,9 @@ def make_df(data, endpoint,call_filter=None):
         temp = pd.DataFrame.from_dict(data=data)
         temp["date"] = pd.to_datetime(arg=temp["date"], format="%Y-%m-%d")
         temp["volume"] = temp["volume"].astype(dtype="Int64",errors="ignore")
+        cols = list(temp.columns.values)
+        cols = cols[:2] + [cols[4]] + cols[2:4] + cols[5:]
+        temp = temp[cols]
 
         # Create stockstats DF
         temp = StockDataFrame.retype(temp)

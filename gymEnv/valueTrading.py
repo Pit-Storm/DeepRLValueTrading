@@ -16,7 +16,6 @@ class valueTradingEnv(Env):
         A gym.Env object.
     """
     metadata = {'render.modes': "human"}
-    spec = None
     
     def __init__(self, df):
         # self variables
@@ -58,7 +57,7 @@ class valueTradingEnv(Env):
             # put the stock from portfolio
             self.new_state[1+index] -= num
             # recalculate the cash
-            self.new_state[0] += amount - self.cost[index]
+            self.new_state[0] += (amount - self.cost[index])
         else:
             pass
     
@@ -66,15 +65,15 @@ class valueTradingEnv(Env):
         # get price of stock
         price = self.new_state[1+self.num_symbols+index]
         amount = price * num
+        # calculate cost
+        self.cost[index] = amount * self.fee
 
         # Check if we have enough cash
-        if self.new_state[0] >= amount:
-            # caluclate cost
-            self.cost[index] = amount * self.fee
+        if self.new_state[0] >= amount+self.cost[index]:
             # call the stock into portfolio
             self.new_state[1+index] += num
             # update the cash
-            self.new_state[0] -= amount - self.cost[index]
+            self.new_state[0] -= (amount + self.cost[index])
         else:
             pass
 
@@ -233,7 +232,7 @@ class valueTradingEnv(Env):
             "costs": []
         }
 
-        return (self.state, self.info)
+        return self.state
     
     def render(self, mode='human'):
         """

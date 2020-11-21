@@ -2,14 +2,15 @@ from gym import Env
 from gym import spaces
 import numpy as np
 import pandas as pd
-from .. import config
+from dateutil.relativedelta import relativedelta
+import config
 
 class valueTradingEnv(Env):
     """
     Inherits from gym.Env. It is a stock trading Environment
 
     params:
-        - df: pandas DataFrame with 'date' and 'symbol' set as multilevel index and at least adjusted closing price as column. IMPORTANT: Adjusted Closing price always has to be the first column for calculating portfolio amount
+        - df: pandas DataFrame with 'date' and 'symbol' set as multilevel index and at least open and closing prices as first and second column. IMPORTANT: open and Closing price always has to be as first and second columns respectively for taking actions and calculating reward.
     
     returns:
         A gym.Env object.
@@ -20,30 +21,80 @@ class valueTradingEnv(Env):
     def __init__(self, df):
         # self variables
         self.df = df
+        self.df_dt_filter = self.df.index.get_level_values(level="date")
         self.indicators = self.df.columns.tolist()
         self.num_symbols = len(self.df.index.get_level_values(level="symbol").unique().tolist())
-        self.dt_filter = self.df.index.get_level_values(level="date")
         self.fee = config.TRADE_FEE_PRCT
         self.scaling = config.ACTION_SCALING
+        self.init_cash = config.INIT_CASH
+
+        # Vars not yet set
+        self.done = None
+        self.reward = None
+        self.state = None
+        self.new_state = None
+        self.info = None
+        self.cost = None
+        self.date = None
+        self.date_idx = None
+        self.end_date = None
+        self.data = None
+        self.data_dt_filter = None
+        self.data_dt_unique = None
 
         # Spaces
         self.action_space = spaces.Box(low = -1, high = 1,shape = (self.num_symbols,))
         obs_shape = 1 + self.num_symbols + (len(self.indicators) * self.num_symbols)
-        self.observation_space = spaces.Box(low=0, high=np.inf, shape = (obs_shape,))
+        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape = (obs_shape,))
 
-    def _sell_stock(self, action):
-        raise NotImplementedError
+    def _sell_stock(self, num, index):
+        # Are we selling less or equal num of stocks we have?
+        if self.new_state[1+index] >= num:
+            # get price of stock to calculate amount
+            price = self.new_state[1+self.num_symbols+index]
+            amount = price * num
+            # calculate cost
+            self.cost[index] = amount * self.fee
+            # put the stock from portfolio
+            self.new_state[1+index] -= num
+            # recalculate the cash
+            self.new_state[0] += amount - self.cost[index]
+        else:
+            pass
+    
+    def _buy_stock(self, num, index):
+        # get price of stock
+        price = self.new_state[1+self.num_symbols+index]
+        amount = price * num
 
-    def _buy_stock(self, action):
-        raise NotImplementedError
+        # Check if we have enough cash
+        if self.new_state[0] >= amount:
+            # caluclate cost
+            self.cost[index] = amount * self.fee
+            # call the stock into portfolio
+            self.new_state[1+index] += num
+            # update the cash
+            self.new_state[0] -= amount - self.cost[index]
+        else:
+            pass
 
-    def _calc_reward(self):
-        raise NotImplementedError
+    def _get_time_range(self):
+        # get all unique dates in df
+        dates = self.df_dt_filter.unique()
+        # set max end date to 4 years befor max date
+        max_end = dates.max() - relativedelta(years=4)
+        min_begin = dates.min()
+        # throw away all dates out of begin and end
+        dates = dates[dates.slice_indexer(min_begin, max_end)].tolist()
+        # sample start date randomly out of possible dates
+        start_date = np.random.choice(dates)
+        # set end date 4yrs-1day relative to start date
+        end_date = start_date + relativedelta(years=4,days=-1)
+        return (start_date, end_date)
 
     def step(self, action):
-        """Run one timestep of the environment's dynamics. When end of
-        episode is reached, you are responsible for calling `reset()`
-        to reset this environment's state.
+        """
+        Run one timestep of the environment's dynamics.
 
         Accepts an action and returns a tuple (observation, reward, done, info).
 
@@ -56,17 +107,85 @@ class valueTradingEnv(Env):
             done (bool): whether the episode has ended, in which case further step() calls will return undefined results
             info (dict): contains auxiliary diagnostic information (helpful for debugging, and sometimes learning)
         """
-        self.reard = 0
-        self.cost = 0
+        self.reward = 0
+        self.cost = [0]*self.num_symbols
+        # Skale action by item
+        action = np.array([int(item*self.scaling) for item in action])
+        real_action = action # save for info
 
-        # TODO: count date one day ahead
-        self.date = 
+        # count date one day ahead
+        self.date_idx += 1
+        self.date = self.data_dt_unique[self.date_idx]
+        # set up new state based on current state
+        # We manipulate the portfolios cash and number of shares in new_state when buying and selling
+        # we need the old portfolio balance to calculate the reward
+        self.new_state =    [self.state[0]] + \
+                            self.state[1:(1+self.num_symbols)] + \
+                            [item for indicator in self.indicators for item in self.data[self.data_dt_filter == self.date][indicator].values.tolist()]
+        
+        # Set action of stock where open, close, high and low is 0 to 0
+        for idx in range(len(action)):
+            prc_open = self.new_state[1+self.num_symbols+idx]
+            prc_close = self.new_state[1+self.num_symbols*2+idx]
+            prc_high = self.new_state[1+self.num_symbols*3+idx]
+            prc_low = self.new_state[1+self.num_symbols*4+idx]
+            if prc_open == 0 and prc_close == 0 and prc_high == 0 and prc_low == 0:
+                action[idx] = 0
+        # Sort actions from lowest to highest
+        argsort_actions = np.argsort(action)
+        # get indices of sell actions
+        sell_indices = argsort_actions[:np.where(action < 0)[0].shape[0]]
+        # get indices of buy actions
+        buy_indices = argsort_actions[::-1][:np.where(action > 0)[0].shape[0]]
 
-        # set done value
-        self.done = self.date == self.end_date
+        # perform each sell action
+        for idx in sell_indices:
+            self._sell_stock(action[idx]*-1, idx)
+        # perform each buy action
+        for idx in buy_indices:
+            self._buy_stock(action[idx], idx)
 
+        # calculate reward
+        new_total_amount = self.new_state[0] + \
+                sum(np.array(self.new_state[1:(1+self.num_symbols)]) * \
+                    np.array(self.new_state[(1+self.num_symbols*2):(1+self.num_symbols*3)]))
+        old_total_amount = self.state[0] + \
+                sum(np.array(self.state[1:(1+self.num_symbols)]) * \
+                    np.array(self.state[(1+self.num_symbols*2):(1+self.num_symbols*3)]))
+        self.reward = new_total_amount - old_total_amount
 
-        return self.state, self.reward, self.done, self.info
+        # set new_state as current state
+        self.state = self.new_state
+
+        # add the values to the info container
+        self.info["dates"].append(self.date)
+        self.info["actions"].append(action)
+        self.info["realActions"].append(real_action)
+        self.info["rewards"].append(self.reward)
+        self.info["cashes"].append(self.state[0])
+        self.info["numShares"].append(self.state[1:(1+self.num_symbols)])
+        self.info["openPrices"].append(self.state[(1+self.num_symbols):(1+self.num_symbols*2)])
+        self.info["closePrices"].append(self.state[(1+self.num_symbols*2):(1+self.num_symbols*3)])
+        self.info["costs"].append(self.cost)
+
+        # Check done conditions
+        # Is date equal to end_date?
+        if self.date == self.end_date:
+            self.done = True
+        # Is the cash lower than x% of init_cash?
+        # If we set this to 0.0 we allow to don't hold cash anyway
+        if self.state[0] < self.init_cash*0.1:
+            self.done = True
+
+        # This is because the agent would not do another step if de env is done
+        # So we need to append some zeros to make the lists the identical lengths
+        if self.done:
+            self.info["actions"].append([0]*len(action))
+            self.info["realActions"].append([0]*len(real_action))
+            self.info["rewards"].append(0)
+            self.info["costs"].append(0)
+        
+        return (self.state, self.reward, self.done, self.info)
 
     def reset(self):
         """Resets the environment to an initial state and returns an initial
@@ -81,88 +200,53 @@ class valueTradingEnv(Env):
         Returns:
             observation (object): the initial observation.
         """
-        self.date = 
-        self.end_date = 
-        self.data = self.df[(self.dt_filter >= self.date) & (self.dt_filter <= self.end_date)]
+        # Get date range
+        start_date, end_date = self._get_time_range()
+        # slice episode data out of df
+        self.data = self.df[(self.df_dt_filter >= start_date) & (self.df_dt_filter <= end_date)]
+        # get a filter object out of index level date
+        self.data_dt_filter = self.data.index.get_level_values(level="date")
+        self.data_dt_unique =  self.data_dt_filter.unique().tolist()
+        # Reset date_idx
+        self.date_idx = 0
+        # get first date object
+        self.date =self.data_dt_unique[self.date_idx]
+        # set real end date
+        self.end_date = self.data_dt_unique[-1]
         self.done = False
         
-        self.state =    [config.INIT_CASH] + \
+        # generate first state
+        self.state =    [self.init_cash] + \
                         [0]*self.num_symbols + \
-                        [item for indicator in self.indicators for item in self.data[self.dt_filter == self.date][indicator].values.tolist()]
+                        [item for indicator in self.indicators for item in self.data[self.data_dt_filter == self.date][indicator].values.tolist()]
         
-        # info container
+        # info container for rendering and output
         self.info = {
             "dates": [self.date],
             "actions": [],
+            "realActions": [],
             "rewards": [],
-            "balance": [self.state[0]],
-            "numshares": [self.state[1:1+self.num_symbols]],
-            "prices": [self.state[1+self.num_symbols*2:1+self.num_symbols*3]]
+            "cashes": [self.state[0]],
+            "numShares": [self.state[1:(1+self.num_symbols)]],
+            "openPrices": [self.state[(1+self.num_symbols):(1+self.num_symbols*2)]],
+            "closePrices": [self.state[(1+self.num_symbols*2):(1+self.num_symbols*3)]],
             "costs": []
         }
 
-        return self.state
+        return (self.state, self.info)
     
     def render(self, mode='human'):
-        """Renders the environment.
-
-        The set of supported modes varies per environment. (And some
-        environments do not support rendering at all.) By convention,
-        if mode is:
-
-        - human: render to the current display or terminal and
-          return nothing. Usually for human consumption.
-        - rgb_array: Return an numpy.ndarray with shape (x, y, 3),
-          representing RGB values for an x-by-y pixel image, suitable
-          for turning into a video.
-        - ansi: Return a string (str) or StringIO.StringIO containing a
-          terminal-style text representation. The text can include newlines
-          and ANSI escape sequences (e.g. for colors).
-
-        Note:
-            Make sure that your class's metadata 'render.modes' key includes
-              the list of supported modes. It's recommended to call super()
-              in implementations to use the functionality of this method.
+        """
+        Prints or plots some basic information.
 
         Args:
             mode (str): the mode to render with
-
-        Example:
-
-        class MyEnv(Env):
-            metadata = {'render.modes': ['human', 'rgb_array']}
-
-            def render(self, mode='human'):
-                if mode == 'rgb_array':
-                    return np.array(...) # return RGB frame suitable for video
-                elif mode == 'human':
-                    ... # pop up a window and render
-                else:
-                    super(MyEnv, self).render(mode=mode) # just raise an exception
         """
-        raise NotImplementedError
-
-    def close(self):
-        """Override close in your subclass to perform any necessary cleanup.
-
-        Environments will automatically close() themselves when
-        garbage collected or when the program exits.
-        """
-        pass
+        if mode == 'human':
+            print("Here should be a basic plot...")
+        else:
+            super(valueTradingEnv, self).render(mode=mode) # just raise an exception
 
     def seed(self, seed=None):
-        """Sets the seed for this env's random number generator(s).
-
-        Note:
-            Some environments use multiple pseudorandom number generators.
-            We want to capture all such seeds used in order to ensure that
-            there aren't accidental correlations between multiple generators.
-
-        Returns:
-            list<bigint>: Returns the list of seeds used in this env's random
-              number generators. The first value in the list should be the
-              "main" seed, or the value which a reproducer should pass to
-              'seed'. Often, the main seed equals the provided 'seed', but
-              this won't be true if seed=None, for example.
-        """
-        return
+        self.np_random, seed = seeding.np_random(seed)
+        return [seed]

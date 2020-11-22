@@ -10,16 +10,19 @@ class valueTradingEnv(Env):
     Inherits from gym.Env. It is a stock trading Environment
 
     params:
-        - df: pandas DataFrame with 'date' and 'symbol' set as multilevel index and at least open and closing prices as first and second column. IMPORTANT: open and Closing price always has to be as first and second columns respectively for taking actions and calculating reward.
-    
+        - df (pandas DataFrame): DF with 'date' and 'symbol' set as multilevel index and at least open and closing prices as first and second column. IMPORTANT: open and Closing price always has to be as first and second columns respectively for taking actions and calculating reward.
+        - train (bool): Are we building the Env for training or not? It is used for calculation the daterante in DFs that are equal size of daterange.
+        - yearrange (int): How many years will one episode take? DF has to be at least this range.
     returns:
         A gym.Env object.
     """
     metadata = {'render.modes': "human"}
     
-    def __init__(self, df):
+    def __init__(self, df: pd.DataFrame, train: bool, yearrange: int=4):
         # self variables
         self.df = df
+        self.train = train
+        self.yearrange = yearrange
         self.df_dt_filter = self.df.index.get_level_values(level="date")
         self.indicators = self.df.columns.tolist()
         self.num_symbols = len(self.df.index.get_level_values(level="symbol").unique().tolist())
@@ -80,15 +83,21 @@ class valueTradingEnv(Env):
     def _get_time_range(self):
         # get all unique dates in df
         dates = self.df_dt_filter.unique()
-        # set max end date to 4 years befor max date
-        max_end = dates.max() - relativedelta(years=4)
-        min_begin = dates.min()
-        # throw away all dates out of begin and end
-        dates = dates[dates.slice_indexer(min_begin, max_end)].tolist()
-        # sample start date randomly out of possible dates
-        start_date = np.random.choice(dates)
-        # set end date 4yrs-1day relative to start date
-        end_date = start_date + relativedelta(years=4,days=-1)
+        if self.train:
+            # set max end date to 4 years befor max date
+            max_end = dates.max() - relativedelta(years=self.yearrange)
+            min_begin = dates.min()
+            # throw away all dates out of begin and end
+            dates = dates[dates.slice_indexer(min_begin, max_end)].tolist()
+            # sample start date randomly out of possible dates
+            start_date = np.random.choice(dates)
+            # set end date 4yrs-1day relative to start date
+            end_date = start_date + relativedelta(years=4,days=-1)
+        else: # If we are not in train environment
+            # Set start date and end date to min and max of df respectively
+            start_date = dates.min()
+            end_date = dates.max()
+        
         return (start_date, end_date)
 
     def step(self, action):

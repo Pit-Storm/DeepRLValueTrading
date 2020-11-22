@@ -11,6 +11,11 @@ ACTION_SCALING = 100
 
 ###
 # Model PAths
-BASE_PATH = "./models/"
+MODEL_BASE_PATH = "./models/"
 # A2C Best Model path
-A2C_MODEL_PATH = path.join(BASE_PATH, "a2c_best_")
+A2C_MODEL_PATH = path.join(MODEL_BASE_PATH, "a2c_best/")
+
+# Tensorboard PAths
+TB_BASE_PATH = "./tb-logs/"
+# A2C Logs path
+A2C_TB_PATH = path.join(TB_BASE_PATH, "a2c/")

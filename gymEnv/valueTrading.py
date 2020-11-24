@@ -131,6 +131,7 @@ class valueTradingEnv(Env):
                             self.state[1:(1+self.num_symbols)] + \
                             [item for indicator in self.indicators for item in self.data[self.data_dt_filter == self.date][indicator].values.tolist()]
         
+        # TODO: Nummer des Wochentags mitgeben?
         # Set action of stock where open, close, high and low is 0 to 0
         for idx in range(len(action)):
             prc_open = self.new_state[1+self.num_symbols+idx]
@@ -176,10 +177,12 @@ class valueTradingEnv(Env):
         self.info["closePrices"].append(self.state[(1+self.num_symbols*2):(1+self.num_symbols*3)])
         self.info["costs"].append(self.cost)
 
+        # TODO: Reward nur am Ende utnersuchen.
         # Check done conditions
         # Is date equal to end_date?
         if self.date == self.end_date:
             self.done = True
+        # TODO: Cashquote rausnehmen
         # Is the cash lower than x% of init_cash?
         # If we set this to 0.0 we allow to don't hold cash anyway
         if self.state[0] < self.init_cash*0.1:

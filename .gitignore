@@ -1,8 +1,9 @@
 # Custom
 
 *.csv
-models/**
-tb-logs/**
+*.sqlite
+API_KEY
+results/**
 
 # Created by https://www.toptal.com/developers/gitignore/api/python
 # Edit at https://www.toptal.com/developers/gitignore?templates=python

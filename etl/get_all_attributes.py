@@ -5,17 +5,21 @@
 
 import eodhistoricaldata as ehd
 import pandas as pd
+from pathlib import Path
 # %%
 ###
 # Reading Data
 ###
 
-trading_df = (pd.read_csv("stocksdata_trading.csv", parse_dates=["date"])
+stocksdata_trading_fp = Path.cwd().parent.joinpath("data","stocksdata_trading.csv")
+stocksdata_fundamental_fp = Path.cwd().parent.joinpath("data","stocksdata_fundamental.csv")
+
+trading_df = (pd.read_csv(stocksdata_trading_fp, parse_dates=["date"])
     .set_index(["date","symbol"])
     .drop(columns=["Unnamed: 0"])
      .rename(columns={"adjusted_close":"adj_close"})
 )
-funda_df = (pd.read_csv("stocksdata_fundamental.csv", parse_dates=["date"])
+funda_df = (pd.read_csv(stocksdata_fundamental_fp, parse_dates=["date"])
     .set_index(["date","symbol"])
     .drop(columns=["Unnamed: 0"])
     .rename(columns={"epsActual":"eps", "book_value": "bv", "shares": "shrs"})
@@ -72,6 +76,12 @@ stocks_df = helper_df.join(stocks_df)
 
 stocks_df = stocks_df.fillna(0)
 stocks_df = stocks_df.drop(columns=["helper"])
+
+# Append the timespecific data
+stocks_df["month"] = stocks_df.index.get_level_values(level="date").month
+stocks_df["dayofmonth"] = stocks_df.index.get_level_values(level="date").day
+stocks_df["dayofweek"] = stocks_df.index.get_level_values(level="date").dayofweek
 # %%
-stocks_df.reset_index().to_csv("stocksdata_all.csv")
+stocksdata_all_fp = Path.cwd().parent.joinpath("data","stocksdata_all.csv")
+stocks_df.reset_index().to_csv(stocksdata_all_fp)
 # %%

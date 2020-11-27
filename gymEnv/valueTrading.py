@@ -3,6 +3,9 @@ from gym import spaces
 import numpy as np
 import pandas as pd
 from dateutil.relativedelta import relativedelta
+import json
+from datetime import datetime as dt
+from pathlib import Path
 import config
 
 class valueTradingEnv(Env):
@@ -18,14 +21,16 @@ class valueTradingEnv(Env):
     """
     metadata = {'render.modes': "human"}
     
-    def __init__(self, df: pd.DataFrame, train: bool, yearrange: int=4):
+    def __init__(self, df: pd.DataFrame, train: bool, save_path: Path, yearrange: int=4):
         # self variables
         self.df = df
         self.train = train
+        self.save_path = save_path
         self.yearrange = yearrange
         self.df_dt_filter = self.df.index.get_level_values(level="date")
         self.indicators = self.df.columns.tolist()
         self.num_symbols = len(self.df.index.get_level_values(level="symbol").unique().tolist())
+        self.num_eps = 0
         self.fee = config.TRADE_FEE_PRCT
         self.scaling = config.ACTION_SCALING
         self.init_cash = config.INIT_CASH
@@ -49,7 +54,11 @@ class valueTradingEnv(Env):
         obs_shape = 1 + self.num_symbols + (len(self.indicators) * self.num_symbols)
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape = (obs_shape,))
 
+        # Create env_info save path
+        self.save_path.mkdir(parents=True, exist_ok=True)
+
     def _sell_stock(self, num, index):
+        # TODO: Set num to stocks helt if grater
         # Are we selling less or equal num of stocks we have?
         if self.new_state[1+index] >= num:
             # get price of stock to calculate amount
@@ -85,10 +94,10 @@ class valueTradingEnv(Env):
         dates = self.df_dt_filter.unique()
         if self.train:
             # set max end date to 4 years befor max date
-            max_end = dates.max() - relativedelta(years=self.yearrange)
-            min_begin = dates.min()
+            sample_end = dates.max() - relativedelta(years=self.yearrange)
+            sample_begin = dates.min()
             # throw away all dates out of begin and end
-            dates = dates[dates.slice_indexer(min_begin, max_end)].tolist()
+            dates = dates[dates.slice_indexer(sample_begin, sample_end)].tolist()
             # sample start date randomly out of possible dates
             start_date = np.random.choice(dates)
             # set end date 4yrs-1day relative to start date
@@ -115,7 +124,7 @@ class valueTradingEnv(Env):
             done (bool): whether the episode has ended, in which case further step() calls will return undefined results
             info (dict): contains auxiliary diagnostic information (helpful for debugging, and sometimes learning)
         """
-        self.reward = 0
+        step_reward = 0
         self.cost = [0]*self.num_symbols
         # Skale action by item
         action = np.array([int(item*self.scaling) for item in action])
@@ -131,7 +140,6 @@ class valueTradingEnv(Env):
                             self.state[1:(1+self.num_symbols)] + \
                             [item for indicator in self.indicators for item in self.data[self.data_dt_filter == self.date][indicator].values.tolist()]
         
-        # TODO: Nummer des Wochentags mitgeben?
         # Set action of stock where open, close, high and low is 0 to 0
         for idx in range(len(action)):
             prc_open = self.new_state[1+self.num_symbols+idx]
@@ -161,31 +169,33 @@ class valueTradingEnv(Env):
         old_total_amount = self.state[0] + \
                 sum(np.array(self.state[1:(1+self.num_symbols)]) * \
                     np.array(self.state[(1+self.num_symbols*2):(1+self.num_symbols*3)]))
-        self.reward = new_total_amount - old_total_amount
+        self.episode_reward += (new_total_amount - old_total_amount)
 
         # set new_state as current state
         self.state = self.new_state
 
         # add the values to the info container
         self.info["dates"].append(self.date)
+        self.info["steps"].append(self.date_idx)
         self.info["actions"].append(action)
         self.info["realActions"].append(real_action)
-        self.info["rewards"].append(self.reward)
+        self.info["cum_rewards"].append(self.episode_reward)
         self.info["cashes"].append(self.state[0])
         self.info["numShares"].append(self.state[1:(1+self.num_symbols)])
         self.info["openPrices"].append(self.state[(1+self.num_symbols):(1+self.num_symbols*2)])
         self.info["closePrices"].append(self.state[(1+self.num_symbols*2):(1+self.num_symbols*3)])
         self.info["costs"].append(self.cost)
 
-        # TODO: Reward nur am Ende utnersuchen.
+        # Strip out the actual and the t-1 info to return it
+        step_info = {key: value[-2:] for key,value in self.info.items()}
+
         # Check done conditions
         # Is date equal to end_date?
         if self.date == self.end_date:
             self.done = True
-        # TODO: Cashquote rausnehmen
         # Is the cash lower than x% of init_cash?
         # If we set this to 0.0 we allow to don't hold cash anyway
-        if self.state[0] < self.init_cash*0.1:
+        if self.state[0] < self.init_cash*0:
             self.done = True
 
         # This is because the agent would not do another step if de env is done
@@ -193,10 +203,22 @@ class valueTradingEnv(Env):
         if self.done:
             self.info["actions"].append([0]*len(action))
             self.info["realActions"].append([0]*len(real_action))
-            self.info["rewards"].append(0)
+            self.info["cum_rewards"].append(0)
             self.info["costs"].append(0)
+
+            # Count a episode
+            self.num_eps += 1
+            # Save info container to json file
+            filename = "episode_" + str(self.num_eps).rjust(4, "0") + ".json"
+            jsonpath = self.save_path.joinpath(filename)
+            with open(jsonpath, 'w') as fp:
+                json.dump(self.info, fp, indent=4, sort_keys=True, default=str)
+
+
+            # Set the episode reward as step reward to return it
+            step_reward = self.episode_reward
         
-        return (self.state, self.reward, self.done, self.info)
+        return (self.state, step_reward, self.done, step_info)
 
     def reset(self):
         """Resets the environment to an initial state and returns an initial
@@ -225,6 +247,7 @@ class valueTradingEnv(Env):
         # set real end date
         self.end_date = self.data_dt_unique[-1]
         self.done = False
+        self.episode_reward = 0
         
         # generate first state
         self.state =    [self.init_cash] + \
@@ -234,9 +257,10 @@ class valueTradingEnv(Env):
         # info container for rendering and output
         self.info = {
             "dates": [self.date],
+            "steps": [self.date_idx],
             "actions": [],
             "realActions": [],
-            "rewards": [],
+            "cum_rewards": [],
             "cashes": [self.state[0]],
             "numShares": [self.state[1:(1+self.num_symbols)]],
             "openPrices": [self.state[(1+self.num_symbols):(1+self.num_symbols*2)]],

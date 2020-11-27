@@ -1,5 +1,5 @@
 from datetime import datetime
-from os import path
+from pathlib import Path
 
 # How much cash does the agent have from beginning?
 INIT_CASH = 1000000
@@ -9,13 +9,14 @@ TRADE_FEE_PRCT = 0.001
 # to get the actual number of trades per share per step
 ACTION_SCALING = 100
 
-###
-# Model PAths
-MODEL_BASE_PATH = "./models/"
-# A2C Best Model path
-A2C_MODEL_PATH = path.join(MODEL_BASE_PATH, "a2c_best/")
+### PATHS
+BASE_PATH = Path.cwd() / "results"
+# Tensorboard Logs path slice
+TB_LOGS_PATH = "tb_logs"
+# Best Model save path slice
+BEST_MODELS_PATH = "best_models"
+# Env info save path
+ENV_INFO_PATH = "env_info"
 
-# Tensorboard PAths
-TB_BASE_PATH = "./tb-logs/"
-# A2C Logs path
-A2C_TB_PATH = path.join(TB_BASE_PATH, "a2c/")
+### NAMES
+MODEL_NAME = "RANDOM"

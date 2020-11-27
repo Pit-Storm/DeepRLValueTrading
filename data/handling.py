@@ -1,9 +1,10 @@
 import pandas as pd
 from dateutil.relativedelta import relativedelta
+from pathlib import Path
 
-def load_data(path):
+def load_data(path: Path):
     """
-    Creates a pandas Dataframe with from file provided with path.
+    Creates a pandas Dataframe from file provided by path.
     Set index to date and symbol.
 
     params:
@@ -39,8 +40,3 @@ def train_val_test_split(df, years=4):
     # creating train df
     train = df[(dates < val_start)]
     return (train, val, test)
-
-# %%
-if __name__ == "__main__":
-    df = load_data("stocksdata_all.csv")
-    train, val, test = train_val_test_split(df)

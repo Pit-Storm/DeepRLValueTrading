@@ -5,6 +5,7 @@
 
 import eodhistoricaldata as ehd
 import pandas as pd
+import numpy as np
 from pathlib import Path
 # %%
 ###
@@ -76,6 +77,7 @@ stocks_df = helper_df.join(stocks_df)
 
 stocks_df = stocks_df.fillna(0)
 stocks_df = stocks_df.drop(columns=["helper"])
+stocks_df = stocks_df.replace(np.inf, 0)
 
 # Append the timespecific data
 stocks_df["month"] = stocks_df.index.get_level_values(level="date").month
@@ -83,5 +85,5 @@ stocks_df["dayofmonth"] = stocks_df.index.get_level_values(level="date").day
 stocks_df["dayofweek"] = stocks_df.index.get_level_values(level="date").dayofweek
 # %%
 stocksdata_all_fp = Path.cwd().parent.joinpath("data","stocksdata_all.csv")
-stocks_df.reset_index().to_csv(stocksdata_all_fp)
+stocks_df.sort_index().reset_index().to_csv(stocksdata_all_fp)
 # %%

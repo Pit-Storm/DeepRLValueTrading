@@ -10,20 +10,19 @@ from pathlib import Path
 from datetime import datetime
 
 timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M')
-base_path = config.BASE_PATH / timestamp / config.MODEL_NAME
+base_path = config.BASE_PATH / config.MODEL_NAME / timestamp
 env_path = base_path / config.ENV_INFO_PATH
 data_path = Path.cwd().joinpath("data","stocksdata_all.csv")
-
 
 def main() -> None:
     ###
     # Define variables
     train_envs = 1
     val_envs = 1
-    val_freq = 4000
-    val_eps = 5
-    test_eps = 100
-    learn_steps = 50000
+    val_freq = 10000
+    val_eps = 1
+    test_eps = 10
+    learn_steps = int(10 * val_freq)
     tb_path = base_path / config.TB_LOGS_PATH
     best_path = base_path / config.BEST_MODELS_PATH
 
@@ -37,15 +36,15 @@ def main() -> None:
     ### PREPARATION
     # Training Env
     train_env = DummyVecEnv([lambda: valueTradingEnv(df=train, train=True, save_path=env_path.joinpath("train")) for i in range(train_envs)])
-    # train_env = VecCheckNan(train_env, raise_exception=True)
+    train_env = VecCheckNan(train_env, raise_exception=True)
     # train_env = VecNormalize(train_env)
     # Validation Env
     val_env = DummyVecEnv([lambda: valueTradingEnv(df=val, train=False, save_path=env_path.joinpath("val")) for i in range(val_envs)])
-    # val_env = VecCheckNan(val_env, raise_exception=True)
+    val_env = VecCheckNan(val_env, raise_exception=True)
     # val_env = VecNormalize(val_env)
     # test_env
     test_env = DummyVecEnv([lambda: valueTradingEnv(df=test, train=False, save_path=env_path.joinpath("test"))])
-    # test_env = VecCheckNan(test_env, raise_exception=True)
+    test_env = VecCheckNan(test_env, raise_exception=True)
     # test_env = VecNormalize(test_env)
 
     # callback for validation
@@ -66,11 +65,11 @@ def main() -> None:
 
     ### EVAL MODEL
     # Make prediction in test_env
-    test_mean, test_rewards = evaluate_policy(model=model, env=test_env,
+    test_mean, test_std = evaluate_policy(model=model, env=test_env,
                                 n_eval_episodes=test_eps, return_episode_rewards=False)
 
     print(f"Test Mean:{test_mean}\n"+ \
-          f"Test Rewards:{test_rewards}")
+          f"Test Std:{test_std}")
 
 def random() -> None:
     ### VARS
@@ -100,6 +99,6 @@ def random() -> None:
                 break
 
 if __name__ == "__main__":
-    # main()
-    random()
+    main()
+    # random()
     # test()

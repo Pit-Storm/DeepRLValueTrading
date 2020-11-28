@@ -19,4 +19,4 @@ BEST_MODELS_PATH = "best_models"
 ENV_INFO_PATH = "env_info"
 
 ### NAMES
-MODEL_NAME = "RANDOM"
+MODEL_NAME = "A2C"

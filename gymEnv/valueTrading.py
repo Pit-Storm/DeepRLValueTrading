@@ -169,7 +169,8 @@ class valueTradingEnv(Env):
         old_total_amount = self.state[0] + \
                 sum(np.array(self.state[1:(1+self.num_symbols)]) * \
                     np.array(self.state[(1+self.num_symbols*2):(1+self.num_symbols*3)]))
-        self.episode_reward += (new_total_amount - old_total_amount)
+        self.episode_reward.append((new_total_amount - old_total_amount) / config.INIT_CASH)
+        step_reward = self.episode_reward[-1]
 
         # set new_state as current state
         self.state = self.new_state
@@ -179,7 +180,7 @@ class valueTradingEnv(Env):
         self.info["steps"].append(self.date_idx)
         self.info["actions"].append(action)
         self.info["realActions"].append(real_action)
-        self.info["cum_rewards"].append(self.episode_reward)
+        self.info["cum_rewards"].append(sum(self.episode_reward))
         self.info["cashes"].append(self.state[0])
         self.info["numShares"].append(self.state[1:(1+self.num_symbols)])
         self.info["openPrices"].append(self.state[(1+self.num_symbols):(1+self.num_symbols*2)])
@@ -214,9 +215,8 @@ class valueTradingEnv(Env):
             with open(jsonpath, 'w') as fp:
                 json.dump(self.info, fp, indent=4, sort_keys=True, default=str)
 
-
-            # Set the episode reward as step reward to return it
-            step_reward = self.episode_reward
+            # calculate the percent of INIT_CASH the agent get as reward
+            # step_reward = sum(self.episode_reward)
         
         return (self.state, step_reward, self.done, step_info)
 
@@ -247,7 +247,7 @@ class valueTradingEnv(Env):
         # set real end date
         self.end_date = self.data_dt_unique[-1]
         self.done = False
-        self.episode_reward = 0
+        self.episode_reward = []
         
         # generate first state
         self.state =    [self.init_cash] + \

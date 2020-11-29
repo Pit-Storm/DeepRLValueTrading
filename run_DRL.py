@@ -1,6 +1,7 @@
 from data import handling as dth
 from gymEnv.valueTrading import valueTradingEnv
 import config
+from algos.basic import buyHold
 from stable_baselines import A2C
 from stable_baselines.common.policies import MlpPolicy, MlpLstmPolicy
 from stable_baselines.common.vec_env import DummyVecEnv, VecCheckNan, VecNormalize
@@ -8,24 +9,28 @@ from stable_baselines.common.callbacks import EvalCallback
 from stable_baselines.common.evaluation import evaluate_policy
 from pathlib import Path
 from datetime import datetime
+import pandas as pd
+from os import system
 
+system("clear")
+
+### VARS
+yearrange = 4
+episodic = False
+train_envs = 1
+val_envs = 1
+val_freq = 10000
+val_eps = 5
+test_eps = 100
+learn_steps = int(6 * val_freq)
 timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M')
 base_path = config.BASE_PATH / config.MODEL_NAME / timestamp
 env_path = base_path / config.ENV_INFO_PATH
+tb_path = base_path / config.TB_LOGS_PATH
+best_path = base_path / config.BEST_MODELS_PATH
 data_path = Path.cwd().joinpath("data","stocksdata_all.csv")
 
 def main() -> None:
-    ###
-    # Define variables
-    train_envs = 1
-    val_envs = 1
-    val_freq = 10000
-    val_eps = 1
-    test_eps = 10
-    learn_steps = int(10 * val_freq)
-    tb_path = base_path / config.TB_LOGS_PATH
-    best_path = base_path / config.BEST_MODELS_PATH
-
     ### DATA
     # Load Dataset
     stocks_df = dth.load_data(data_path)
@@ -35,15 +40,18 @@ def main() -> None:
 
     ### PREPARATION
     # Training Env
-    train_env = DummyVecEnv([lambda: valueTradingEnv(df=train, train=True, save_path=env_path.joinpath("train")) for i in range(train_envs)])
+    train_env = DummyVecEnv([lambda: valueTradingEnv(df=train, episodic=episodic, yearrange=yearrange,
+                            save_path=env_path.joinpath("train")) for i in range(train_envs)])
     train_env = VecCheckNan(train_env, raise_exception=True)
     # train_env = VecNormalize(train_env)
     # Validation Env
-    val_env = DummyVecEnv([lambda: valueTradingEnv(df=val, train=False, save_path=env_path.joinpath("val")) for i in range(val_envs)])
+    val_env = DummyVecEnv([lambda: valueTradingEnv(df=val, train=False, episodic=episodic, yearrange=yearrange,
+                            save_path=env_path.joinpath("val")) for i in range(val_envs)])
     val_env = VecCheckNan(val_env, raise_exception=True)
     # val_env = VecNormalize(val_env)
     # test_env
-    test_env = DummyVecEnv([lambda: valueTradingEnv(df=test, train=False, save_path=env_path.joinpath("test"))])
+    test_env = DummyVecEnv([lambda: valueTradingEnv(df=test, train=False, episodic=episodic, yearrange=yearrange,
+                            save_path=env_path.joinpath("test"))])
     test_env = VecCheckNan(test_env, raise_exception=True)
     # test_env = VecNormalize(test_env)
 
@@ -98,7 +106,57 @@ def random() -> None:
             if done:
                 break
 
+def buyAndHold() -> None:
+    ### VARS
+    test_eps = 1000
+    episodic = False
+
+    ### DATA
+    # Load Dataset
+    stocks_df = dth.load_data(data_path)
+
+    # make train, val, test df
+    train, val, test = dth.train_val_test_split(stocks_df)
+
+    ### PREPARATION
+    # Training Env
+    train_env = DummyVecEnv([lambda: valueTradingEnv(df=train, episodic=episodic, yearrange=yearrange) for i in range(train_envs)])
+
+    # Validation Env
+    val_env = DummyVecEnv([lambda: valueTradingEnv(df=val, train=False, episodic=episodic, yearrange=yearrange) for i in range(val_envs)])
+
+    # test_env
+    test_env = DummyVecEnv([lambda: valueTradingEnv(df=test, train=False, episodic=episodic, yearrange=yearrange)])
+    
+    ep_rewards = []
+
+    print(f"Start trading...")
+    for episode in range(test_eps):
+        state = train_env.reset()
+        done = False
+        ep_rewards.append([])
+        while not done:
+            action = buyHold(state[0], train_env.action_space)
+            state, reward, done, _ = train_env.step([action])
+            ep_rewards[episode].append(reward[0])
+        print(f"{episode+1}. Episode reward: {sum(ep_rewards[episode])}")
+        if (episode+1) % 10 == 0:
+            sum_rewards = [sum(lst) for lst in ep_rewards]
+            mean_reward = sum(sum_rewards) / len(sum_rewards)
+            print(f"Mean reward after {episode+1}th Episode: {mean_reward}")
+
+    # rewards_df = pd.DataFrame(ep_rewards, columns=range(eps))
+    # rewards_mean = rewards_df.mean()
+    # rewards_std = rewards_df.std()
+
+    # print(f"Buy and Hold Algo")
+    # print(f"Mean reward: {rewards_mean} | Std reward {rewards_std}")
+
+def test() -> None:
+    print()
+
 if __name__ == "__main__":
-    main()
+    # main()
     # random()
+    buyAndHold()
     # test()

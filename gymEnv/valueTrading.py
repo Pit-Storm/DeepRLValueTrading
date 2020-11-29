@@ -5,7 +5,7 @@ import pandas as pd
 from dateutil.relativedelta import relativedelta
 import json
 from datetime import datetime as dt
-from pathlib import Path
+from pathlib import Path, PurePath
 import config
 
 class valueTradingEnv(Env):
@@ -21,10 +21,12 @@ class valueTradingEnv(Env):
     """
     metadata = {'render.modes': "human"}
     
-    def __init__(self, df: pd.DataFrame, train: bool, save_path: Path, yearrange: int=4):
+    def __init__(self, df: pd.DataFrame, train: bool=True, episodic: bool=False,
+                save_path: Path=None, yearrange: int=4):
         # self variables
         self.df = df
         self.train = train
+        self.episodic = episodic
         self.save_path = save_path
         self.yearrange = yearrange
         self.df_dt_filter = self.df.index.get_level_values(level="date")
@@ -55,7 +57,9 @@ class valueTradingEnv(Env):
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape = (obs_shape,))
 
         # Create env_info save path
-        self.save_path.mkdir(parents=True, exist_ok=True)
+        if not isinstance(self.save_path, type(None)):
+            assert isinstance(self.save_path, PurePath), "save_path is no pathlib.Path object."
+            self.save_path.mkdir(parents=True, exist_ok=True)
 
     def _sell_stock(self, num, index):
         # TODO: Set num to stocks helt if grater
@@ -171,6 +175,8 @@ class valueTradingEnv(Env):
                     np.array(self.state[(1+self.num_symbols*2):(1+self.num_symbols*3)]))
         self.episode_reward.append((new_total_amount - old_total_amount) / config.INIT_CASH)
         step_reward = self.episode_reward[-1]
+        if self.episodic:
+            step_reward = 0
 
         # set new_state as current state
         self.state = self.new_state
@@ -210,13 +216,15 @@ class valueTradingEnv(Env):
             # Count a episode
             self.num_eps += 1
             # Save info container to json file
-            filename = "episode_" + str(self.num_eps).rjust(4, "0") + ".json"
-            jsonpath = self.save_path.joinpath(filename)
-            with open(jsonpath, 'w') as fp:
-                json.dump(self.info, fp, indent=4, sort_keys=True, default=str)
+            if not isinstance(self.save_path, type(None)):
+                filename = "episode_" + str(self.num_eps).rjust(4, "0") + ".json"
+                jsonpath = self.save_path.joinpath(filename)
+                with open(jsonpath, 'w') as fp:
+                    json.dump(self.info, fp, indent=4, sort_keys=True, default=str)
 
-            # calculate the percent of INIT_CASH the agent get as reward
-            # step_reward = sum(self.episode_reward)
+            if self.episodic:
+                # calculate the percent of INIT_CASH the agent get as reward
+                step_reward = sum(self.episode_reward)
         
         return (self.state, step_reward, self.done, step_info)
 

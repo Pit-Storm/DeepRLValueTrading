@@ -21,11 +21,11 @@ class valueTradingEnv(Env):
     """
     metadata = {'render.modes': "human"}
     
-    def __init__(self, df: pd.DataFrame, train: bool=True, episodic: bool=False,
+    def __init__(self, df: pd.DataFrame, sample: bool=True, episodic: bool=False,
                 save_path: Path=None, yearrange: int=4):
         # self variables
         self.df = df
-        self.train = train
+        self.sample = sample
         self.episodic = episodic
         self.save_path = save_path
         self.yearrange = yearrange
@@ -96,7 +96,7 @@ class valueTradingEnv(Env):
     def _get_time_range(self):
         # get all unique dates in df
         dates = self.df_dt_filter.unique()
-        if self.train:
+        if self.sample:
             # set max end date to 4 years befor max date
             sample_end = dates.max() - relativedelta(years=self.yearrange)
             sample_begin = dates.min()

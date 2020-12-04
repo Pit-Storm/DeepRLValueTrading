@@ -7,6 +7,7 @@ INIT_CASH = 1000000
 TRADE_FEE_PRCT = 0.001
 # Scale the generated actions by this value
 # to get the actual number of trades per share per step
+# This is Equal to the maximum number of buy/sell actions per share and step
 ACTION_SCALING = 100
 
 ### PATHS

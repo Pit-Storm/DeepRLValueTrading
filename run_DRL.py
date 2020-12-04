@@ -19,10 +19,10 @@ yearrange = 4
 episodic = False
 train_envs = 1
 val_envs = 1
-val_freq = 10000
-val_eps = 5
+val_freq = 1000
+val_eps = 10
 test_eps = 100
-learn_steps = int(6 * val_freq)
+learn_steps = int(15 * val_freq)
 timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M')
 base_path = config.BASE_PATH / config.MODEL_NAME / timestamp
 env_path = base_path / config.ENV_INFO_PATH
@@ -36,21 +36,21 @@ def main() -> None:
     stocks_df = dth.load_data(data_path)
 
     # make train, val, test df
-    train, val, test = dth.train_val_test_split(stocks_df)
+    train, val, test = dth.train_val_test_split(stocks_df, yearrange)
 
     ### PREPARATION
     # Training Env
-    train_env = DummyVecEnv([lambda: valueTradingEnv(df=train, episodic=episodic, yearrange=yearrange,
+    train_env = DummyVecEnv([lambda: valueTradingEnv(df=train, sample=False, episodic=episodic, yearrange=yearrange,
                             save_path=env_path.joinpath("train")) for i in range(train_envs)])
     train_env = VecCheckNan(train_env, raise_exception=True)
     # train_env = VecNormalize(train_env)
     # Validation Env
-    val_env = DummyVecEnv([lambda: valueTradingEnv(df=val, train=False, episodic=episodic, yearrange=yearrange,
+    val_env = DummyVecEnv([lambda: valueTradingEnv(df=val, sample=False, episodic=episodic, yearrange=yearrange,
                             save_path=env_path.joinpath("val")) for i in range(val_envs)])
     val_env = VecCheckNan(val_env, raise_exception=True)
     # val_env = VecNormalize(val_env)
     # test_env
-    test_env = DummyVecEnv([lambda: valueTradingEnv(df=test, train=False, episodic=episodic, yearrange=yearrange,
+    test_env = DummyVecEnv([lambda: valueTradingEnv(df=test, sample=False, episodic=episodic, yearrange=yearrange,
                             save_path=env_path.joinpath("test"))])
     test_env = VecCheckNan(test_env, raise_exception=True)
     # test_env = VecNormalize(test_env)
@@ -58,7 +58,7 @@ def main() -> None:
     # callback for validation
     eval_callback = EvalCallback(val_env, best_model_save_path=best_path,
                              log_path=tb_path, eval_freq=val_freq,
-                             deterministic=True, n_eval_episodes=val_eps)
+                             deterministic=False, n_eval_episodes=val_eps)
 
     ### SETUP AND TRAIN
     # Setup model
@@ -73,7 +73,7 @@ def main() -> None:
 
     ### EVAL MODEL
     # Make prediction in test_env
-    test_mean, test_std = evaluate_policy(model=model, env=test_env,
+    test_mean, test_std = evaluate_policy(model=model, env=test_env, deterministic=False,
                                 n_eval_episodes=test_eps, return_episode_rewards=False)
 
     print(f"Test Mean:{test_mean}\n"+ \
@@ -92,7 +92,7 @@ def random() -> None:
 
     ###
     # Setup ENV
-    test_env = valueTradingEnv(test, train=False, save_path=env_path)
+    test_env = valueTradingEnv(df=test, sample=False, episodic=episodic, yearrange=yearrange, save_path=env_path)
 
     ###
     # Demo loop
@@ -107,10 +107,6 @@ def random() -> None:
                 break
 
 def buyAndHold() -> None:
-    ### VARS
-    test_eps = 1000
-    episodic = False
-
     ### DATA
     # Load Dataset
     stocks_df = dth.load_data(data_path)
@@ -120,24 +116,27 @@ def buyAndHold() -> None:
 
     ### PREPARATION
     # Training Env
-    train_env = DummyVecEnv([lambda: valueTradingEnv(df=train, episodic=episodic, yearrange=yearrange) for i in range(train_envs)])
+    train_env = DummyVecEnv([lambda: valueTradingEnv(df=train, sample=False, episodic=episodic, yearrange=yearrange) for i in range(train_envs)])
 
     # Validation Env
-    val_env = DummyVecEnv([lambda: valueTradingEnv(df=val, train=False, episodic=episodic, yearrange=yearrange) for i in range(val_envs)])
+    val_env = DummyVecEnv([lambda: valueTradingEnv(df=val, sample=False, episodic=episodic, yearrange=yearrange) for i in range(val_envs)])
 
     # test_env
-    test_env = DummyVecEnv([lambda: valueTradingEnv(df=test, train=False, episodic=episodic, yearrange=yearrange)])
+    test_env = DummyVecEnv([lambda: valueTradingEnv(df=test, sample=False, episodic=episodic, yearrange=yearrange)])
     
+    # Which env do we want to use?
+    env = test_env
+
     ep_rewards = []
 
     print(f"Start trading...")
     for episode in range(test_eps):
-        state = train_env.reset()
+        state = env.reset()
         done = False
         ep_rewards.append([])
         while not done:
-            action = buyHold(state[0], train_env.action_space)
-            state, reward, done, _ = train_env.step([action])
+            action = buyHold(state[0], env.action_space)
+            state, reward, done, _ = env.step([action])
             ep_rewards[episode].append(reward[0])
         print(f"{episode+1}. Episode reward: {sum(ep_rewards[episode])}")
         if (episode+1) % 10 == 0:
@@ -145,12 +144,6 @@ def buyAndHold() -> None:
             mean_reward = sum(sum_rewards) / len(sum_rewards)
             print(f"Mean reward after {episode+1}th Episode: {mean_reward}")
 
-    # rewards_df = pd.DataFrame(ep_rewards, columns=range(eps))
-    # rewards_mean = rewards_df.mean()
-    # rewards_std = rewards_df.std()
-
-    # print(f"Buy and Hold Algo")
-    # print(f"Mean reward: {rewards_mean} | Std reward {rewards_std}")
 
 def test() -> None:
     print()

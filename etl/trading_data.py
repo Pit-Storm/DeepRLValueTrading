@@ -34,5 +34,5 @@ stocks_df = (stocks_df.sort_index()
     .loc[("2000-01-03",):("2019-12-31",)]
 )
 # %%
-stocks_df.reset_index().to_csv("stocksdata_trading.csv")
+stocks_df.reset_index().to_csv("../data/stocksdata_trading.csv")
 # %%

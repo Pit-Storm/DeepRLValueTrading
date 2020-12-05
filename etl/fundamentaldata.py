@@ -68,14 +68,7 @@ stocks_df["shares"] = stocks_df["shares"].fillna(stocks_df["commonStockSharesOut
 
 stocks_df = stocks_df.loc[slice(None),("epsActual","book_value","shares")]
 # %%
-stocks_df.reset_index().to_csv("stocksdata_fundamental.csv")
-# %%
-# Handle missing values for fundamental data
-# symbols = stocks_df.index.get_level_values(level="symbol")
-
-# for symbol in symbols:
-#     stocks_df.loc[(slice(None),symbol),("book_value")] = stocks_df.loc[(slice(None),symbol),("book_value")].interpolate(limit=4,limit_area="inside")
-#     stocks_df.loc[(slice(None),symbol),("shares")] = stocks_df.loc[(slice(None),symbol),("shares")].interpolate(limit=4,limit_area="inside")
+stocks_df.reset_index().to_csv("../data/stocksdata_fundamental.csv")
 
 # stocks_df = stocks_df.fillna(0)
 # %%

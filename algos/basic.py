@@ -1,6 +1,7 @@
 import config
+import numpy as np
 
-def buyHold(state: list, action_space) -> list:
+def buyHold(state: list, action_space) -> np.array:
     """
     Basic Buy'n'Hold Agent.
     
@@ -23,4 +24,4 @@ def buyHold(state: list, action_space) -> list:
             num = num if num <= 1 else 1
         action.append(num)
         
-        return action
+    return np.array(action)

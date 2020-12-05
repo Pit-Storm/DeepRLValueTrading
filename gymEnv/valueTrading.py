@@ -128,11 +128,10 @@ class valueTradingEnv(Env):
             done (bool): whether the episode has ended, in which case further step() calls will return undefined results
             info (dict): contains auxiliary diagnostic information (helpful for debugging, and sometimes learning)
         """
-        step_reward = 0
         self.cost = [0]*self.num_symbols
         # Skale action by item
         action = np.array([int(item*self.scaling) for item in action])
-        real_action = action # save for info
+        real_action = action.copy() # save for info
 
         # count date one day ahead
         self.date_idx += 1
@@ -145,6 +144,7 @@ class valueTradingEnv(Env):
                             [item for indicator in self.indicators for item in self.data[self.data_dt_filter == self.date][indicator].values.tolist()]
         
         # Set action of stock where open, close, high and low is 0 to 0
+        # Because it is not tradable at this state
         for idx in range(len(action)):
             prc_open = self.new_state[1+self.num_symbols+idx]
             prc_close = self.new_state[1+self.num_symbols*2+idx]
@@ -152,7 +152,7 @@ class valueTradingEnv(Env):
             prc_low = self.new_state[1+self.num_symbols*4+idx]
             if prc_open == 0 and prc_close == 0 and prc_high == 0 and prc_low == 0:
                 action[idx] = 0
-        # Sort actions from lowest to highest
+        # return sorted actions indices in sorted order (lowest first)
         argsort_actions = np.argsort(action)
         # get indices of sell actions
         sell_indices = argsort_actions[:np.where(action < 0)[0].shape[0]]
@@ -161,10 +161,10 @@ class valueTradingEnv(Env):
 
         # perform each sell action
         for idx in sell_indices:
-            self._sell_stock(action[idx]*-1, idx)
+            self._sell_stock(int(action[idx]*-1), idx)
         # perform each buy action
         for idx in buy_indices:
-            self._buy_stock(action[idx], idx)
+            self._buy_stock(int(action[idx]), idx)
 
         # calculate reward
         new_total_amount = self.new_state[0] + \
@@ -173,6 +173,7 @@ class valueTradingEnv(Env):
         old_total_amount = self.state[0] + \
                 sum(np.array(self.state[1:(1+self.num_symbols)]) * \
                     np.array(self.state[(1+self.num_symbols*2):(1+self.num_symbols*3)]))
+        # We index the reward by init cash. So it is a percentage of init cash.
         self.episode_reward.append((new_total_amount - old_total_amount) / config.INIT_CASH)
         step_reward = self.episode_reward[-1]
         if self.episodic:
@@ -180,21 +181,6 @@ class valueTradingEnv(Env):
 
         # set new_state as current state
         self.state = self.new_state
-
-        # add the values to the info container
-        self.info["dates"].append(self.date)
-        self.info["steps"].append(self.date_idx)
-        self.info["actions"].append(action)
-        self.info["realActions"].append(real_action)
-        self.info["cum_rewards"].append(sum(self.episode_reward))
-        self.info["cashes"].append(self.state[0])
-        self.info["numShares"].append(self.state[1:(1+self.num_symbols)])
-        self.info["openPrices"].append(self.state[(1+self.num_symbols):(1+self.num_symbols*2)])
-        self.info["closePrices"].append(self.state[(1+self.num_symbols*2):(1+self.num_symbols*3)])
-        self.info["costs"].append(self.cost)
-
-        # Strip out the actual and the t-1 info to return it
-        step_info = {key: value[-2:] for key,value in self.info.items()}
 
         # Check done conditions
         # Is date equal to end_date?
@@ -205,12 +191,26 @@ class valueTradingEnv(Env):
         if self.state[0] < self.init_cash*0:
             self.done = True
 
-        # This is because the agent would not do another step if de env is done
-        # So we need to append some zeros to make the lists the identical lengths
+        if self.done and self.episodic:
+            # calculate the total episodic reward
+            step_reward = sum(self.episode_reward)
+        
+        # add the values to the info container
+        self.info["dates"].append(self.date.strftime("%Y-%m-%d"))
+        self.info["cashes"].append(self.state[0])
+        self.info["numShares"].append(self.state[1:(1+self.num_symbols)])
+        self.info["realActions"].append(real_action.tolist())
+        self.info["rewards"].append(step_reward)
+        self.info["costs"].append(self.cost)
+
+        # Strip out the actual and the t-1 info to return it
+        step_info = {key: value[-2:] for key,value in self.info.items()}
+
         if self.done:
-            self.info["actions"].append([0]*len(action))
-            self.info["realActions"].append([0]*len(real_action))
-            self.info["cum_rewards"].append(0)
+            # This is because the agent would not do another step if de env is done
+            # So we need to append some zeros to make the lists the identical lengths
+            self.info["realActions"].append([0]*self.num_symbols)
+            self.info["rewards"].append(0)
             self.info["costs"].append(0)
 
             # Count a episode
@@ -220,12 +220,8 @@ class valueTradingEnv(Env):
                 filename = "episode_" + str(self.num_eps).rjust(4, "0") + ".json"
                 jsonpath = self.save_path.joinpath(filename)
                 with open(jsonpath, 'w') as fp:
-                    json.dump(self.info, fp, indent=4, sort_keys=True, default=str)
+                    json.dump(self.info, fp, indent=4, sort_keys=False)
 
-            if self.episodic:
-                # calculate the percent of INIT_CASH the agent get as reward
-                step_reward = sum(self.episode_reward)
-        
         return (self.state, step_reward, self.done, step_info)
 
     def reset(self):
@@ -256,7 +252,7 @@ class valueTradingEnv(Env):
         self.end_date = self.data_dt_unique[-1]
         self.done = False
         self.episode_reward = []
-        
+
         # generate first state
         self.state =    [self.init_cash] + \
                         [0]*self.num_symbols + \
@@ -264,15 +260,11 @@ class valueTradingEnv(Env):
         
         # info container for rendering and output
         self.info = {
-            "dates": [self.date],
-            "steps": [self.date_idx],
-            "actions": [],
-            "realActions": [],
-            "cum_rewards": [],
+            "dates": [self.date.strftime("%Y-%m-%d")],
             "cashes": [self.state[0]],
             "numShares": [self.state[1:(1+self.num_symbols)]],
-            "openPrices": [self.state[(1+self.num_symbols):(1+self.num_symbols*2)]],
-            "closePrices": [self.state[(1+self.num_symbols*2):(1+self.num_symbols*3)]],
+            "realActions": [],
+            "rewards": [],
             "costs": []
         }
 

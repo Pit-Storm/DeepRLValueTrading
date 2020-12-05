@@ -7,19 +7,14 @@ import requests
 import pandas as pd
 from stockstats import StockDataFrame
 import requests_cache
+from pathlib import Path
 
 ###
 # Constants
 ###
 
 # API_KEY
-API_KEY = None
-def check_API_KEY():
-    global API_KEY
-    if os.environ.get("API_KEY") == None:
-        raise NameError("Set env var API_KEY befor starting devcontainer.")
-    else:
-        API_KEY = os.environ.get("API_KEY")
+API_KEY = Path.cwd().joinpath("API_KEY").read_text().replace("\n", "")
 
 # base URL
 BASE_URL = "https://eodhistoricaldata.com/api/"
@@ -158,7 +153,6 @@ def get_data(endpoint, symbol, exchange, params, fmt=FORMAT):
     returns:
         - dict in list with returned answer
     """
-    check_API_KEY()
     if type(endpoint) is not str:
         raise TypeError("Content type of endpoint has to be str.")
     if endpoint not in ENDPOINTS:

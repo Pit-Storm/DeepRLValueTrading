@@ -17,44 +17,45 @@ system("clear")
 ### VARS
 yearrange = 4
 episodic = False
+trainsampling = False
 train_envs = 1
 val_envs = 1
 val_freq = 1000
 val_eps = 10
 test_eps = 100
 learn_steps = int(15 * val_freq)
-timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M')
-base_path = config.BASE_PATH / config.MODEL_NAME / timestamp
+timestr = datetime.now().strftime('%Y-%m-%d_%H-%M')
+base_path = config.BASE_PATH / config.MODEL_NAME / timestr
 env_path = base_path / config.ENV_INFO_PATH
 tb_path = base_path / config.TB_LOGS_PATH
 best_path = base_path / config.BEST_MODELS_PATH
 data_path = Path.cwd().joinpath("data","stocksdata_all.csv")
 
-def main() -> None:
-    ### DATA
-    # Load Dataset
-    stocks_df = dth.load_data(data_path)
+### DATA
+# Load Dataset
+stocks_df = dth.load_data(data_path)
 
-    # make train, val, test df
-    train, val, test = dth.train_val_test_split(stocks_df, yearrange)
+# make train, val, test df
+train, val, test = dth.train_val_test_split(stocks_df)
 
+# Training Env
+train_env = DummyVecEnv([lambda: valueTradingEnv(df=train, sample=trainsampling, episodic=episodic, yearrange=yearrange,
+                        save_path=env_path.joinpath("train")) for i in range(train_envs)])
+train_env = VecCheckNan(train_env, raise_exception=True)
+
+# Validation Env
+val_env = DummyVecEnv([lambda: valueTradingEnv(df=val, sample=False, episodic=episodic, yearrange=yearrange,
+                        save_path=env_path.joinpath("val")) for i in range(val_envs)])
+val_env = VecCheckNan(val_env, raise_exception=True)
+
+# test_env
+test_env = DummyVecEnv([lambda: valueTradingEnv(df=test, sample=False, episodic=episodic, yearrange=yearrange,
+                        save_path=env_path.joinpath("test"))])
+test_env = VecCheckNan(test_env, raise_exception=True)
+
+
+def DRL() -> None:
     ### PREPARATION
-    # Training Env
-    train_env = DummyVecEnv([lambda: valueTradingEnv(df=train, sample=False, episodic=episodic, yearrange=yearrange,
-                            save_path=env_path.joinpath("train")) for i in range(train_envs)])
-    train_env = VecCheckNan(train_env, raise_exception=True)
-    # train_env = VecNormalize(train_env)
-    # Validation Env
-    val_env = DummyVecEnv([lambda: valueTradingEnv(df=val, sample=False, episodic=episodic, yearrange=yearrange,
-                            save_path=env_path.joinpath("val")) for i in range(val_envs)])
-    val_env = VecCheckNan(val_env, raise_exception=True)
-    # val_env = VecNormalize(val_env)
-    # test_env
-    test_env = DummyVecEnv([lambda: valueTradingEnv(df=test, sample=False, episodic=episodic, yearrange=yearrange,
-                            save_path=env_path.joinpath("test"))])
-    test_env = VecCheckNan(test_env, raise_exception=True)
-    # test_env = VecNormalize(test_env)
-
     # callback for validation
     eval_callback = EvalCallback(val_env, best_model_save_path=best_path,
                              log_path=tb_path, eval_freq=val_freq,
@@ -67,9 +68,8 @@ def main() -> None:
     # Train Model
     model = model.learn(total_timesteps=learn_steps, callback=eval_callback)
 
-    ### TODO
-    # If model has validation measurement over specific
-    # threshold stop training
+    # TODO: Load best model after training
+    model.load_parameters()
 
     ### EVAL MODEL
     # Make prediction in test_env
@@ -80,50 +80,24 @@ def main() -> None:
           f"Test Std:{test_std}")
 
 def random() -> None:
-    ### VARS
-    test_eps = 100
-
-    ###
-    # Load Dataset
-    stocks_df = dth.load_data(data_path)
-
-    # make train, val, test df
-    _, _, test = dth.train_val_test_split(stocks_df)
-
     ###
     # Setup ENV
-    test_env = valueTradingEnv(df=test, sample=False, episodic=episodic, yearrange=yearrange, save_path=env_path)
+    env = test_env
 
     ###
     # Demo loop
     for episode in range(test_eps):
         print(f"{episode+1}. Episode")
-        _ = test_env.reset() # reset for each new episode
+        _ = env.reset() # reset for each new episode
         done = False
         while not done: # run until done
-            action = test_env.action_space.sample() # select a random action (see https://github.com/openai/gym/wiki/CartPole-v0)
-            _, _, done, _ = test_env.step(action)
+            action = env.action_space.sample() # select a random action (see https://github.com/openai/gym/wiki/CartPole-v0)
+            _, _, done, _ = env.step(action)
             if done:
                 break
 
 def buyAndHold() -> None:
-    ### DATA
-    # Load Dataset
-    stocks_df = dth.load_data(data_path)
-
-    # make train, val, test df
-    train, val, test = dth.train_val_test_split(stocks_df)
-
     ### PREPARATION
-    # Training Env
-    train_env = DummyVecEnv([lambda: valueTradingEnv(df=train, sample=False, episodic=episodic, yearrange=yearrange) for i in range(train_envs)])
-
-    # Validation Env
-    val_env = DummyVecEnv([lambda: valueTradingEnv(df=val, sample=False, episodic=episodic, yearrange=yearrange) for i in range(val_envs)])
-
-    # test_env
-    test_env = DummyVecEnv([lambda: valueTradingEnv(df=test, sample=False, episodic=episodic, yearrange=yearrange)])
-    
     # Which env do we want to use?
     env = test_env
 
@@ -144,12 +118,7 @@ def buyAndHold() -> None:
             mean_reward = sum(sum_rewards) / len(sum_rewards)
             print(f"Mean reward after {episode+1}th Episode: {mean_reward}")
 
-
-def test() -> None:
-    print()
-
 if __name__ == "__main__":
-    # main()
+    # DRL()
     # random()
     buyAndHold()
-    # test()

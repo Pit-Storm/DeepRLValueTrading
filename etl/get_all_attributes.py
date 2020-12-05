@@ -13,17 +13,23 @@ from pathlib import Path
 ###
 
 stocksdata_trading_fp = Path.cwd().parent.joinpath("data","stocksdata_trading.csv")
-stocksdata_fundamental_fp = Path.cwd().parent.joinpath("data","stocksdata_fundamental.csv")
+stocksdata_funda_fp = Path.cwd().parent.joinpath("data","stocksdata_fundamental.csv")
+stocksdata_forex_fp = Path.cwd().parent.joinpath("data","stocksdata_forex.csv")
 
 trading_df = (pd.read_csv(stocksdata_trading_fp, parse_dates=["date"])
     .set_index(["date","symbol"])
     .drop(columns=["Unnamed: 0"])
      .rename(columns={"adjusted_close":"adj_close"})
 )
-funda_df = (pd.read_csv(stocksdata_fundamental_fp, parse_dates=["date"])
+funda_df = (pd.read_csv(stocksdata_funda_fp, parse_dates=["date"])
     .set_index(["date","symbol"])
     .drop(columns=["Unnamed: 0"])
     .rename(columns={"epsActual":"eps", "book_value": "bv", "shares": "shrs"})
+)
+forex_df = (pd.read_csv(stocksdata_forex_fp, parse_dates=["date"])
+    .set_index(["date"])
+    .drop(columns=["Unnamed: 0"])
+    .rename(columns={"macd":"eurusd_macd"})
 )
 # %%
 # Handling trading NaN values
@@ -78,11 +84,15 @@ stocks_df = helper_df.join(stocks_df)
 stocks_df = stocks_df.fillna(0)
 stocks_df = stocks_df.drop(columns=["helper"])
 stocks_df = stocks_df.replace(np.inf, 0)
-
+# %%
 # Append the timespecific data
 stocks_df["month"] = stocks_df.index.get_level_values(level="date").month
 stocks_df["dayofmonth"] = stocks_df.index.get_level_values(level="date").day
 stocks_df["dayofweek"] = stocks_df.index.get_level_values(level="date").dayofweek
+# %%
+# join forex_df to the data
+stocks_df = stocks_df.join(forex_df)
+stocks_df = stocks_df.fillna(method="ffill")
 # %%
 stocksdata_all_fp = Path.cwd().parent.joinpath("data","stocksdata_all.csv")
 stocks_df.sort_index().reset_index().to_csv(stocksdata_all_fp)

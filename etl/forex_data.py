@@ -21,8 +21,9 @@ params = {
 
 # %%
 tmp = ehd.get_data(endpoint=endpoint, symbol=symbol, exchange=exchange, params=params)
-tmp_df = ehd.make_df(data=tmp, endpoint=endpoint, call_filter=symbol)
-
-tmp_df.head()
-
+forex_df = ehd.make_df(data=tmp, endpoint=endpoint, call_filter=symbol)
+# %%
+forex_df = forex_df.sort_index().loc[("2000-01-03"):("2019-12-31")]
+# %%
+forex_df["macd"].reset_index().to_csv("../data/stocksdata_forex.csv")
 # %%

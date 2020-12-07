@@ -5,7 +5,6 @@ import numpy as np
 import pandas as pd
 from dateutil.relativedelta import relativedelta
 import json
-from datetime import datetime as dt
 from pathlib import Path, PurePath
 import config
 
@@ -39,18 +38,18 @@ class valueTradingEnv(Env):
         self.init_cash = config.INIT_CASH
 
         # Vars not yet set
-        self.done = None
-        self.reward = None
-        self.state = None
-        self.new_state = None
-        self.info = None
         self.cost = None
-        self.date = None
-        self.date_idx = None
-        self.end_date = None
         self.data = None
         self.data_dt_filter = None
         self.data_dt_unique = None
+        self.date = None
+        self.date_idx = None
+        self.done = None
+        self.end_date = None
+        self.info = None
+        self.new_state = None
+        self.reward = None
+        self.state = None
 
         # If we want to sample during training, we have to seed the RNG
         if self.sample:

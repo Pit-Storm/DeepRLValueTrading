@@ -1,5 +1,6 @@
 from gym import Env
 from gym import spaces
+from gym.utils import seeding
 import numpy as np
 import pandas as pd
 from dateutil.relativedelta import relativedelta
@@ -51,6 +52,10 @@ class valueTradingEnv(Env):
         self.data_dt_filter = None
         self.data_dt_unique = None
 
+        # If we want to sample during training, we have to seed the RNG
+        if self.sample:
+            self.seed()
+
         # Spaces
         self.action_space = spaces.Box(low = -1, high = 1,shape = (self.num_symbols,))
         obs_shape = 1 + self.num_symbols + (len(self.indicators) * self.num_symbols)
@@ -62,7 +67,6 @@ class valueTradingEnv(Env):
             self.save_path.mkdir(parents=True, exist_ok=True)
 
     def _sell_stock(self, num, index):
-        # TODO: Set num to stocks helt if grater
         # Are we selling less or equal num of stocks we have?
         if self.new_state[1+index] >= num:
             # get price of stock to calculate amount
@@ -103,7 +107,7 @@ class valueTradingEnv(Env):
             # throw away all dates out of begin and end
             dates = dates[dates.slice_indexer(sample_begin, sample_end)].tolist()
             # sample start date randomly out of possible dates
-            start_date = np.random.choice(dates)
+            start_date = self.np_random.choice(dates)
             # set end date 4yrs-1day relative to start date
             end_date = start_date + relativedelta(years=4,days=-1)
         else: # If we are not in train environment
@@ -220,7 +224,7 @@ class valueTradingEnv(Env):
                 filename = "episode_" + str(self.num_eps).rjust(4, "0") + ".json"
                 jsonpath = self.save_path.joinpath(filename)
                 with open(jsonpath, 'w') as fp:
-                    json.dump(self.info, fp, indent=4, sort_keys=False)
+                    json.dump(self.info, fp, indent=4)
 
         return (self.state, step_reward, self.done, step_info)
 

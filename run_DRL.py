@@ -2,79 +2,67 @@ from data import handling as dth
 from gymEnv.valueTrading import valueTradingEnv
 import config
 from algos.basic import buyHold
-from stable_baselines import A2C
+
+from stable_baselines import A2C, PPO2, DDPG
 from stable_baselines.common.policies import MlpPolicy, MlpLstmPolicy
 from stable_baselines.common.vec_env import DummyVecEnv, VecCheckNan, VecNormalize
 from stable_baselines.common.callbacks import EvalCallback
 from stable_baselines.common.evaluation import evaluate_policy
-from pathlib import Path
-from datetime import datetime
-import pandas as pd
+
 from os import system
 
 system("clear")
 
-### VARS
-yearrange = 4
-episodic = False
-trainsampling = False
-train_envs = 1
-val_envs = 1
-val_freq = 1000
-val_eps = 10
-test_eps = 100
-learn_steps = int(15 * val_freq)
-timestr = datetime.now().strftime('%Y-%m-%d_%H-%M')
-base_path = config.BASE_PATH / config.MODEL_NAME / timestr
-env_path = base_path / config.ENV_INFO_PATH
-tb_path = base_path / config.TB_LOGS_PATH
-best_path = base_path / config.BEST_MODELS_PATH
-data_path = Path.cwd().joinpath("data","stocksdata_all.csv")
-
 ### DATA
 # Load Dataset
-stocks_df = dth.load_data(data_path)
+stocks_df = dth.load_data(config.data_path)
 
 # make train, val, test df
 train, val, test = dth.train_val_test_split(stocks_df)
 
 # Training Env
-train_env = DummyVecEnv([lambda: valueTradingEnv(df=train, sample=trainsampling, episodic=episodic, yearrange=yearrange,
-                        save_path=env_path.joinpath("train")) for i in range(train_envs)])
+train_env = DummyVecEnv([lambda: valueTradingEnv(df=train, sample=config.trainsampling, episodic=config.episodic, yearrange=config.yearrange,
+                        save_path=config.env_path.joinpath("train")) for i in range(config.train_envs)])
 train_env = VecCheckNan(train_env, raise_exception=True)
 
 # Validation Env
-val_env = DummyVecEnv([lambda: valueTradingEnv(df=val, sample=False, episodic=episodic, yearrange=yearrange,
-                        save_path=env_path.joinpath("val")) for i in range(val_envs)])
+val_env = DummyVecEnv([lambda: valueTradingEnv(df=val, sample=False, episodic=config.episodic, yearrange=config.yearrange,
+                        save_path=config.env_path.joinpath("val")) for i in range(config.val_envs)])
 val_env = VecCheckNan(val_env, raise_exception=True)
 
 # test_env
-test_env = DummyVecEnv([lambda: valueTradingEnv(df=test, sample=False, episodic=episodic, yearrange=yearrange,
-                        save_path=env_path.joinpath("test"))])
+test_env = DummyVecEnv([lambda: valueTradingEnv(df=test, sample=False, episodic=config.episodic, yearrange=config.yearrange,
+                        save_path=config.env_path.joinpath("test"))])
 test_env = VecCheckNan(test_env, raise_exception=True)
 
 
 def DRL() -> None:
     ### PREPARATION
     # callback for validation
-    eval_callback = EvalCallback(val_env, best_model_save_path=best_path,
-                             log_path=tb_path, eval_freq=val_freq,
-                             deterministic=False, n_eval_episodes=val_eps)
+    eval_callback = EvalCallback(val_env, best_model_save_path=config.val_path,
+                             log_path=config.val_path, eval_freq=config.val_freq,
+                             deterministic=False, n_eval_episodes=config.val_eps)
 
     ### SETUP AND TRAIN
     # Setup model
-    model = A2C('MlpLstmPolicy', train_env, verbose=1, tensorboard_log=tb_path)
+    if config.MODEL_NAME == "A2C":
+        model = A2C(config.POLICY, train_env, verbose=1, tensorboard_log=config.tb_path, seed=config.seed)
+    elif config.MODEL_NAME == "PPO":
+        model = PPO2(config.POLICY, train_env, verbose=1, tensorboard_log=config.tb_path, seed=config.seed)
+    elif config.MODEL_NAME == "DDPG":
+        model = DDPG(config.POLICY, train_env, verbose=1, tensorboard_log=config.tb_path, seed=config.seed)
+
     ###
     # Train Model
-    model = model.learn(total_timesteps=learn_steps, callback=eval_callback)
+    model = model.learn(total_timesteps=config.learn_steps, callback=eval_callback)
 
-    # TODO: Load best model after training
-    model.load_parameters()
+    # Load best model after training
+    model = A2C.load(load_path=config.val_path.joinpath("best_model.zip"))
 
     ### EVAL MODEL
     # Make prediction in test_env
     test_mean, test_std = evaluate_policy(model=model, env=test_env, deterministic=False,
-                                n_eval_episodes=test_eps, return_episode_rewards=False)
+                                n_eval_episodes=config.test_eps, return_episode_rewards=False)
 
     print(f"Test Mean:{test_mean}\n"+ \
           f"Test Std:{test_std}")
@@ -86,7 +74,7 @@ def random() -> None:
 
     ###
     # Demo loop
-    for episode in range(test_eps):
+    for episode in range(config.test_eps):
         print(f"{episode+1}. Episode")
         _ = env.reset() # reset for each new episode
         done = False
@@ -96,7 +84,7 @@ def random() -> None:
             if done:
                 break
 
-def buyAndHold() -> None:
+def BuyHold() -> None:
     ### PREPARATION
     # Which env do we want to use?
     env = test_env
@@ -104,7 +92,7 @@ def buyAndHold() -> None:
     ep_rewards = []
 
     print(f"Start trading...")
-    for episode in range(test_eps):
+    for episode in range(config.test_eps):
         state = env.reset()
         done = False
         ep_rewards.append([])
@@ -119,6 +107,9 @@ def buyAndHold() -> None:
             print(f"Mean reward after {episode+1}th Episode: {mean_reward}")
 
 if __name__ == "__main__":
-    # DRL()
-    # random()
-    buyAndHold()
+    if config.MODEL_NAME in config.drl_algos:
+        DRL()
+    elif config.MODEL_NAME == "BuyHold":
+        BuyHold()
+    elif config.MODEL_NAME == "Random":
+        random()

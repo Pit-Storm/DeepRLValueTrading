@@ -4,7 +4,17 @@ import argparse
 import json
 import sys
 
-# Vars for use in argparse and program flow
+### CONSTANTS
+seed = 42
+num_envs = 1
+# Tensorboard Logs path slice
+TB_LOGS_PATH = "tb_logs"
+# Best Model save path slice
+BEST_MODELS_PATH = "val_info"
+# Env info save path
+ENV_INFO_PATH = "env_info"
+
+# Consts for use in argparse and program flow
 basic_algos = ["BuyHold", "Random"]
 drl_algos = ["A2C", "PPO", "DDPG"]
 algos = basic_algos + drl_algos
@@ -28,6 +38,7 @@ parser.add_argument("--val_freq", action="store", default=1000, type=int, help="
 parser.add_argument("--yearrange", action="store", default=4, type=int, help="The yearrange of train and test env data. In combination with --trainsampling you additionally control the range of the sampled period.")
 args = parser.parse_args()
 
+### GENERAL VARS
 # How much cash does the agent have from beginning?
 INIT_CASH = args.cash
 # How much percent of the trade (num times price) will a trade cost?
@@ -36,41 +47,42 @@ TRADE_FEE_PRCT = args.fee
 # to get the actual number of trades per share per step
 # This is Equal to the maximum number of buy/sell actions per share and step
 ACTION_SCALING = args.scaling
-
+# Base Path
 BASE_PATH = Path.cwd() / args.result_dir
+# What model to train/evaluate?
 MODEL_NAME = args.algo
-args.policy = "MlpPolicy" if MODEL_NAME == "DDPG" else args.policy
-POLICY = args.policy
-
-### VARS
-seed = 42
-num_envs = 1
-# Tensorboard Logs path slice
-TB_LOGS_PATH = "tb_logs"
-# Best Model save path slice
-BEST_MODELS_PATH = "val_info"
-# Env info save path
-ENV_INFO_PATH = "env_info"
-
-
-# set the vars out of args
-episodic = args.episodic
-deterministic = args.deterministic
-learn_steps = args.learn_steps
-test_eps = 1 if deterministic else args.test_eps
-timestr = datetime.now().strftime('%Y-%m-%d_%H-%M')
-trainsampling = args.trainsampling
-val_eps = 1 if deterministic else args.val_eps
-val_freq = args.val_freq
-yearrange = args.yearrange
-
 # Create paths
+timestr = datetime.now().strftime('%Y-%m-%d_%H-%M')
 base_path = BASE_PATH / MODEL_NAME / timestr
 base_path.mkdir(parents=True, exist_ok=True)
 env_path = base_path / ENV_INFO_PATH
 tb_path = base_path / TB_LOGS_PATH
 val_path = base_path / BEST_MODELS_PATH
 data_path = Path.cwd().joinpath("data","stocksdata_all.csv")
+
+# Set vars in dependence of the model we train/evaluate
+if MODEL_NAME in basic_algos:
+    args.policy = None
+    episodic = args.episodic
+    deterministic = args.deterministic = None
+    learn_steps = args.learn_steps = None
+    test_eps = args.test_eps = 25
+    trainsampling = args.trainsampling = None
+    val_eps = args.val_eps = None
+    val_freq = args.val_freq = None
+    yearrange = args.yearrange
+elif MODEL_NAME in drl_algos:
+    args.policy = "MlpPolicy" if MODEL_NAME == "DDPG" else args.policy
+    episodic = args.episodic
+    deterministic = args.deterministic
+    learn_steps = args.learn_steps
+    test_eps = 1 if deterministic else args.test_eps
+    trainsampling = args.trainsampling
+    val_eps = 1 if deterministic else args.val_eps
+    val_freq = args.val_freq
+    yearrange = args.yearrange
+
+POLICY = args.policy
 
 with open(base_path.joinpath("run_args.json"), "w") as fp:
     json.dump(vars(args), fp, indent=4, sort_keys=True)

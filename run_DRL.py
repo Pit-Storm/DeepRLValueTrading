@@ -79,37 +79,23 @@ def DRL() -> None:
     print(f"Test Mean:{test_mean}\n"+ \
           f"Test Std:{test_std}")
 
-def random() -> None:
+def basic() -> None:
     ###
     # Setup ENV
-    env = test_env
-
-    ###
-    # Demo loop
-    for episode in range(config.test_eps):
-        print(f"{episode+1}. Episode")
-        _ = env.reset() # reset for each new episode
-        done = False
-        while not done: # run until done
-            action = env.action_space.sample() # select a random action (see https://github.com/openai/gym/wiki/CartPole-v0)
-            _, _, done, _ = env.step(action)
-            if done:
-                break
-
-def BuyHold() -> None:
-    ### PREPARATION
-    # Which env do we want to use?
     env = test_env
 
     ep_rewards = []
 
     print(f"Start trading...")
     for episode in range(config.test_eps):
-        state = env.reset()
+        state = env.reset() # reset for each new episode
         done = False
         ep_rewards.append([])
-        while not done:
-            action = buyHold(state[0], env.action_space)
+        while not done: # run until done
+            if config.MODEL_NAME == "Random":
+                action = env.action_space.sample() # select a random action
+            if config.MODEL_NAME == "BuyHold":
+                action = buyHold(state[0], env.action_space)
             state, reward, done, _ = env.step([action])
             ep_rewards[episode].append(reward[0])
         print(f"{episode+1}. Episode reward: {sum(ep_rewards[episode])}")
@@ -121,7 +107,5 @@ def BuyHold() -> None:
 if __name__ == "__main__":
     if config.MODEL_NAME in config.drl_algos:
         DRL()
-    elif config.MODEL_NAME == "BuyHold":
-        BuyHold()
-    elif config.MODEL_NAME == "Random":
-        random()
+    elif config.MODEL_NAME in config.basic_algos:
+        basic()

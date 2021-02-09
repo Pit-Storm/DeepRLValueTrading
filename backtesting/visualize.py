@@ -3,18 +3,18 @@ import sys
 sys.path.append("..")
 from data import handling as dth
 import pandas as pd
-import pyfolio as pf
 from pathlib import Path
 %matplotlib inline
 import quantstats as qs
 # extend pandas functionality with metrics, etc.
 qs.extend_pandas()
 # %%
-algo_name = "Random" # What algo to evaluate. must be the same as in run_DRL.py
-rewards_ser = None # timesseries with dates and rewards
+algo_name = "BuyHold" # What algo to evaluate. must be the same as in run_DRL.py
+rewards_ser = None # timeseries with dates and rewards
 portfolio_df = None # index (Dates), [symbols, ...] (float: net amount holding), cash (float)
 actions_df = None # index (date), amount (int: action), price (float: open), symbol (string)
 indices_df = None # Timeseries with dates and daily returns
+sum_mode = "comp" # How will the growth rate be calculated? Compound or Cummulative
 
 algo_dir = Path.cwd().parent / "results" / algo_name
 run_dirs = [dr for dr in algo_dir.iterdir() if dr.is_dir()]
@@ -41,10 +41,8 @@ dji_ser = dji_ser.pct_change()
 dji_ser = dji_ser.fillna(0)
 dji_ser = dji_ser.rename(index="dly_ret").rename_axis("Date")
 # %%
-qs.plots.snapshot(rewards_ser, title=algo_name+" Performance", mode="sum")
+qs.plots.snapshot(rewards_ser, title=algo_name+" Performance", mode=sum_mode)
 # %%
-qs.plots.snapshot(stoxx50e_ser, title="EuroStoxx50 Performance", mode="sum")
+qs.plots.snapshot(stoxx50e_ser, title="EuroStoxx50 Performance", mode=sum_mode)
 # %%
-qs.plots.snapshot(dji_ser,title="Dow Jones Industrial Average Performance", mode="sum")
-# %%
-# TODO: Decide which calculation mode to use for ws.plots
+qs.plots.snapshot(dji_ser,title="Dow Jones Industrial Average Performance", mode=sum_mode)

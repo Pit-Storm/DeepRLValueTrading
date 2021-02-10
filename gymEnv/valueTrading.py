@@ -21,14 +21,15 @@ class valueTradingEnv(Env):
     """
     metadata = {'render.modes': "human"}
     
-    def __init__(self, df: pd.DataFrame, sample: bool=True, episodic: bool=False,
-                save_path: Path=None, yearrange: int=4):
+    def __init__(self, df: pd.DataFrame, sample: bool=False, episodic: bool=False,
+                save_path: Path=None, yearrange: int=4, cagr: bool=False):
         # self variables
         self.df = df
         self.sample = sample
         self.episodic = episodic
         self.save_path = save_path
         self.yearrange = yearrange
+        self.cagr = cagr
         self.df_dt_filter = self.df.index.get_level_values(level="date")
         self.indicators = self.df.columns.tolist()
         self.num_symbols = len(self.df.index.get_level_values(level="symbol").unique().tolist())
@@ -46,9 +47,9 @@ class valueTradingEnv(Env):
         self.date_idx = None
         self.done = None
         self.end_date = None
+        self.episode_totalValues = None
         self.info = None
         self.new_state = None
-        self.reward = None
         self.state = None
 
         # If we want to sample during training, we have to seed the RNG
@@ -107,8 +108,8 @@ class valueTradingEnv(Env):
             dates = dates[dates.slice_indexer(sample_begin, sample_end)].tolist()
             # sample start date randomly out of possible dates
             start_date = self.np_random.choice(dates)
-            # set end date 4yrs-1day relative to start date
-            end_date = start_date + relativedelta(years=4,days=-1)
+            # set end date num-yrs minus 1day relative to start date
+            end_date = start_date + relativedelta(years=self.yearrange,days=-1)
         else: # If we are not in train environment
             # Set start date and end date to min and max of df respectively
             start_date = dates.min()
@@ -170,17 +171,21 @@ class valueTradingEnv(Env):
             self._buy_stock(int(action[idx]), idx)
 
         # calculate reward
-        new_total_amount = self.new_state[0] + \
+        new_total_value = self.new_state[0] + \
                 sum(np.array(self.new_state[1:(1+self.num_symbols)]) * \
                     np.array(self.new_state[(1+self.num_symbols*2):(1+self.num_symbols*3)]))
-        old_total_amount = self.state[0] + \
-                sum(np.array(self.state[1:(1+self.num_symbols)]) * \
-                    np.array(self.state[(1+self.num_symbols*2):(1+self.num_symbols*3)]))
-        # We index the reward by init cash. So it is a percentage of init cash.
-        self.episode_reward.append((new_total_amount - old_total_amount) / config.INIT_CASH)
-        step_reward = self.episode_reward[-1]
+
+        # We create a compount reward to avoid volatility
+        self.episode_totalValues[self.date_idx] = new_total_value
         if self.episodic:
-            step_reward = 0
+            step_reward = 0.0
+        else:
+            if self.cagr:
+                # CAGR towards actual step
+                step_reward = self.episode_totalValues[:self.date_idx+1].pct_change().add(1).prod() - 1
+            else:
+                # Rolling compound growth rate
+                step_reward = (self.episode_totalValues[:self.date_idx+1].pct_change().add(1).cumprod() - 1).values[-1]
 
         # set new_state as current state
         self.state = self.new_state
@@ -196,12 +201,18 @@ class valueTradingEnv(Env):
 
         if self.done and self.episodic:
             # calculate the total episodic reward
-            step_reward = sum(self.episode_reward)
+            if self.cagr:
+                # CAGR towards actual step
+                step_reward = self.episode_totalValues[:self.date_idx+1].pct_change().add(1).prod() - 1
+            else:
+                # Rolling compound growth rate
+                step_reward = (self.episode_totalValues[:self.date_idx+1].pct_change().add(1).cumprod() - 1).values[-1]
         
         # add the values to the info container
         self.info["dates"].append(self.date.strftime("%Y-%m-%d"))
         self.info["cashes"].append(self.state[0])
         self.info["numShares"].append(self.state[1:(1+self.num_symbols)])
+        self.info["totalValues"].append(self.episode_totalValues[self.date_idx])
         self.info["realActions"].append(real_action.tolist())
         self.info["rewards"].append(step_reward)
         self.info["costs"].append(self.cost)
@@ -254,18 +265,21 @@ class valueTradingEnv(Env):
         # set real end date
         self.end_date = self.data_dt_unique[-1]
         self.done = False
-        self.episode_reward = []
+        self.episode_totalValues =pd.Series(np.zeros(shape=len(self.data_dt_unique)))
 
         # generate first state
         self.state =    [self.init_cash] + \
                         [0]*self.num_symbols + \
                         [item for indicator in self.indicators for item in self.data[self.data_dt_filter == self.date][indicator].values.tolist()]
         
+        self.episode_totalValues[0] = self.state[0]
+
         # info container for rendering and output
         self.info = {
             "dates": [self.date.strftime("%Y-%m-%d")],
             "cashes": [self.state[0]],
             "numShares": [self.state[1:(1+self.num_symbols)]],
+            "totalValues": [self.episode_totalValues[self.date_idx]],
             "realActions": [],
             "rewards": [],
             "costs": []

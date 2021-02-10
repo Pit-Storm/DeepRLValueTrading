@@ -24,17 +24,17 @@ train, val, test = dth.train_val_test_split(stocks_df)
 
 # Training Env
 train_env = DummyVecEnv([lambda: valueTradingEnv(df=train, sample=config.trainsampling, episodic=config.episodic, yearrange=config.yearrange,
-                        save_path=config.env_path.joinpath("train")) for i in range(config.num_envs)])
+                        cagr=config.cagr, save_path=config.env_path.joinpath("train")) for i in range(config.num_envs)])
 train_env = VecCheckNan(train_env, raise_exception=True)
 
 # Validation Env
 val_env = DummyVecEnv([lambda: valueTradingEnv(df=val, sample=False, episodic=config.episodic, yearrange=config.yearrange,
-                        save_path=config.env_path.joinpath("val")) for i in range(config.num_envs)])
+                        cagr=config.cagr, save_path=config.env_path.joinpath("val")) for i in range(config.num_envs)])
 val_env = VecCheckNan(val_env, raise_exception=True)
 
 # test_env
 test_env = DummyVecEnv([lambda: valueTradingEnv(df=test, sample=False, episodic=config.episodic, yearrange=config.yearrange,
-                        save_path=config.env_path.joinpath("test"))])
+                        cagr=config.cagr, save_path=config.env_path.joinpath("test"))])
 test_env = VecCheckNan(test_env, raise_exception=True)
 
 
@@ -98,7 +98,7 @@ def basic() -> None:
                 action = buyHold(state[0], env.action_space)
             state, reward, done, _ = env.step([action])
             ep_rewards[episode].append(reward[0])
-        print(f"{episode+1}. Episode reward: {sum(ep_rewards[episode])}")
+        print(f"{episode+1}. Episode last reward: {ep_rewards[episode][-1]}")
         if (episode+1) % 10 == 0:
             sum_rewards = [sum(lst) for lst in ep_rewards]
             mean_reward = sum(sum_rewards) / len(sum_rewards)

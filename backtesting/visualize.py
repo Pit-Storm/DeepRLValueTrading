@@ -46,3 +46,21 @@ qs.plots.snapshot(rewards_ser, title=algo_name+" Performance", mode=sum_mode)
 qs.plots.snapshot(stoxx50e_ser, title="EuroStoxx50 Performance", mode=sum_mode)
 # %%
 qs.plots.snapshot(dji_ser,title="Dow Jones Industrial Average Performance", mode=sum_mode)
+# %%
+qs.stats.comp(rewards_ser)
+# %%
+qs.stats.compsum(rewards_ser).plot()
+# %%
+rewards_ser.head()
+# %%
+returns_fb = qs.utils.download_returns('FB')
+returns_fb.head()
+# %%
+qs.stats.comp(returns_fb)
+# %%
+qs.stats.compsum(returns_fb).tail()
+# %%
+returns_fb.head()
+# %%
+returns_fb.tail()
+# %%

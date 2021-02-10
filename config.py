@@ -23,6 +23,7 @@ policies = ["MlpLstmPolicy", "MlpPolicy"]
 # argparse arguments
 parser = argparse.ArgumentParser(description="Train and Evaluate different Deep RL Algos for trading. Some algorithms are there for backtesting the DRL ones.")
 parser.add_argument("--algo", action="store", required=True, type=str, choices=algos, help="Choose the algorithm to train and evaluate. Is required.")
+parser.add_argument("--cagr", action="store_true", default=False, help="Should the reward be calculated average (set option) or cumulative over all taken steps. Default is cumulative.")
 parser.add_argument("--cash", action="store", default=1000000, type=int, help="Initial cash the algo can spent.")
 parser.add_argument("--deterministic", action="store_true", default=False, help="If you set this, val_eps and test_eps will be 1")
 parser.add_argument("--episodic", action="store_true", default=False, help="Set it to give a cumulated reward on the end of period. If unset step per step reward.")
@@ -63,6 +64,7 @@ data_path = Path.cwd().joinpath("data","stocksdata_all.csv")
 # Set vars in dependence of the model we train/evaluate
 if MODEL_NAME in basic_algos:
     args.policy = None
+    cagr = args.cagr
     episodic = args.episodic
     deterministic = args.deterministic = None
     learn_steps = args.learn_steps = None
@@ -73,6 +75,7 @@ if MODEL_NAME in basic_algos:
     yearrange = args.yearrange
 elif MODEL_NAME in drl_algos:
     args.policy = "MlpPolicy" if MODEL_NAME == "DDPG" else args.policy
+    cagr = args.cagr
     episodic = args.episodic
     deterministic = args.deterministic
     learn_steps = args.learn_steps

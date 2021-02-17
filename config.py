@@ -3,6 +3,7 @@ from pathlib import Path, PurePath
 import argparse
 import json
 import sys
+import logging
 
 ### CONSTANTS
 seed = 42
@@ -23,10 +24,10 @@ policies = ["MlpLstmPolicy", "MlpPolicy"]
 # argparse arguments
 parser = argparse.ArgumentParser(description="Train and Evaluate different Deep RL Algos for trading. Some algorithms are there for backtesting the DRL ones.")
 parser.add_argument("--algo", action="store", required=True, type=str, choices=algos, help="Choose the algorithm to train and evaluate. Is required.")
-parser.add_argument("--cagr", action="store_true", default=False, help="Should the reward be calculated average (set option) or cumulative over all taken steps. Default is cumulative.")
+parser.add_argument("--cagr", action="store_true", default=False, help="Should the reward be calculated average over all actually taken steps (set option) or rolling step by step. Default is rolling.")
 parser.add_argument("--cash", action="store", default=1000000, type=int, help="Initial cash the algo can spent.")
 parser.add_argument("--deterministic", action="store_true", default=False, help="If you set this, val_eps and test_eps will be 1")
-parser.add_argument("--episodic", action="store_true", default=False, help="Set it to give a cumulated reward on the end of period. If unset step per step reward.")
+parser.add_argument("--episodic", action="store_true", default=False, help="Set it, to give reward only on the end of episode. If unset rearding every step.")
 parser.add_argument("--fee", action="store", default=0.001, type=float, help="Percentage of costs per trade.")
 parser.add_argument("--learn_steps", action="store", default=15000, type=int, help="Number of timesteps the Agent will learn. Only for DRL algos.")
 parser.add_argument("--policy", action="store", default="MlpLstmPolicy", type=str, choices=policies, help="DDPG always uses non recurrent.")
@@ -36,6 +37,7 @@ parser.add_argument("--test_eps", action="store", default=100, type=int, help="T
 parser.add_argument("--trainsampling", action="store_true", default=False, help="Sample --yearrange timeperiod out of training data for every episode.")
 parser.add_argument("--val_eps", action="store", default=10, type=int, help="Takes effect if --deterministic is unset.")
 parser.add_argument("--val_freq", action="store", default=1000, type=int, help="Every VAL_FREQth timestep the agent will be evaluated. Only for DRL.")
+parser.add_argument("--verbose", action="store_true", default=False, help="Verbose output for learn and eval.")
 parser.add_argument("--yearrange", action="store", default=4, type=int, help="The yearrange of train and test env data. In combination with --trainsampling you additionally control the range of the sampled period.")
 args = parser.parse_args()
 
@@ -68,7 +70,7 @@ if MODEL_NAME in basic_algos:
     episodic = args.episodic
     deterministic = args.deterministic = None
     learn_steps = args.learn_steps = None
-    test_eps = args.test_eps = 25
+    test_eps = args.test_eps
     trainsampling = args.trainsampling = None
     val_eps = args.val_eps = None
     val_freq = args.val_freq = None
@@ -82,13 +84,35 @@ elif MODEL_NAME in drl_algos:
     test_eps = 1 if deterministic else args.test_eps
     trainsampling = args.trainsampling
     val_eps = 1 if deterministic else args.val_eps
-    val_freq = args.val_freq
+    if args.learn_steps < args.val_freq:
+        val_freq = args.val_freq = args.learn_steps
+    else:
+        val_freq = args.val_freq
     yearrange = args.yearrange
 
-POLICY = args.policy
+    POLICY = args.policy
 
 with open(base_path.joinpath("run_args.json"), "w") as fp:
     json.dump(vars(args), fp, indent=4, sort_keys=True)
 
 with open(base_path.joinpath("command.txt"), "w") as fp:
     fp.write(" ".join(sys.argv))
+
+### LOG CONFIG
+# Loglevel
+logging.basicConfig(level="INFO")
+# log format
+log_format = logging.Formatter("%(asctime)s | %(message)s")
+
+# Console handler
+log_handler_std = logging.StreamHandler(sys.stdout)
+log_handler_std.setLevel(logging.WARN)
+log_handler_std.setFormatter(log_format)
+
+# File Handler
+log_handler_file = logging.FileHandler(base_path.joinpath("events.log"))
+log_handler_file.setLevel(logging.INFO)
+log_handler_file.setFormatter(log_format)
+
+### OTHER CONSTANTS
+verbosity = 1 if args.verbose else 0

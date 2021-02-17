@@ -9,7 +9,7 @@ import quantstats as qs
 # extend pandas functionality with metrics, etc.
 qs.extend_pandas()
 # %%
-algo_name = "BuyHold" # What algo to evaluate. must be the same as in run_DRL.py
+algo_name = "BuyHold" # What algo to evaluate. must be the same as specified in config.py
 rewards_ser = None # timeseries with dates and rewards
 portfolio_df = None # index (Dates), [symbols, ...] (float: net amount holding), cash (float)
 actions_df = None # index (date), amount (int: action), price (float: open), symbol (string)

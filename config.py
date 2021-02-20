@@ -16,14 +16,14 @@ BEST_MODELS_PATH = "val_info"
 ENV_INFO_PATH = "env_info"
 
 # Consts for use in argparse and program flow
-basic_algos = ["BuyHold", "Random"]
+basic_algos = ["BUYHOLD", "RANDOM"]
 drl_algos = ["A2C", "PPO", "DDPG"]
 algos = basic_algos + drl_algos
 policies = ["MlpLstmPolicy", "MlpPolicy"]
 
 # argparse arguments
 parser = argparse.ArgumentParser(description="Train and Evaluate different Deep RL Algos for trading. Some algorithms are there for backtesting the DRL ones.")
-parser.add_argument("--algo", action="store", required=True, type=str, choices=algos, help="Choose the algorithm to train and evaluate. Is required.")
+parser.add_argument("--algo", action="store", required=True, type=str.upper, choices=algos, help="Choose the algorithm to train and evaluate. Is required.")
 parser.add_argument("--cagr", action="store_true", default=False, help="Should the reward be calculated average over all actually taken steps (set option) or rolling step by step. Default is rolling.")
 parser.add_argument("--cash", action="store", default=1000000, type=int, help="Initial cash the algo can spent.")
 parser.add_argument("--deterministic", action="store_true", default=False, help="If you set this, val_eps and test_eps will be 1")
@@ -53,7 +53,7 @@ ACTION_SCALING = args.scaling
 # Base Path
 BASE_PATH = Path.cwd() / args.result_dir
 # What model to train/evaluate?
-MODEL_NAME = args.algo
+MODEL_NAME = args.algo.upper()
 # Create paths
 timestr = datetime.now().strftime('%Y-%m-%d_%H-%M')
 base_path = BASE_PATH / MODEL_NAME / timestr

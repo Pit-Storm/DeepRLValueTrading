@@ -2,7 +2,7 @@ import pandas as pd
 from dateutil.relativedelta import relativedelta
 from pathlib import Path
 
-def load_data(path: Path):
+def load_data(path: Path) -> pd.DataFrame:
     """
     Creates a pandas Dataframe from file provided by path.
     Set index to date and symbol.
@@ -19,7 +19,7 @@ def load_data(path: Path):
             )
     return df
 
-def train_val_test_split(df, years=4):
+def train_val_test_split(df: pd.DataFrame, years: int=4) -> list:
     """
     Splits df into train, val and test. Val and Test is slice of years.
 

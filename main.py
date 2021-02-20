@@ -72,9 +72,9 @@ def basic() -> None:
         state = env.reset() # reset for each new episode
         done = False
         while not done: # run until done
-            if config.MODEL_NAME == "Random":
+            if config.MODEL_NAME == "RANDOM":
                 action = env.action_space.sample() # select a random action
-            if config.MODEL_NAME == "BuyHold":
+            if config.MODEL_NAME == "BUYHOLD":
                 action = buyHold(state[0], env.action_space)
             state, reward, done, _ = env.step([action])
         ep_rewards.append(reward[0])
@@ -98,7 +98,7 @@ if __name__ == "__main__":
     stocks_df = dth.load_data(config.data_path)
 
     # make train, val, test df
-    train, val, test = dth.train_val_test_split(stocks_df)
+    train, val, test = dth.train_val_test_split(df=stocks_df, years=config.yearrange)
 
     logger.info(f"Data loaded and split.")
 

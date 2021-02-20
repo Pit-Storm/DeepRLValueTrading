@@ -21,6 +21,12 @@ At first you should check the [README of etl folder](./etl/README.md) to see wha
 
 There are lot more parameters you can pass to the script. Just run `python main.py --help` for help or check [the config](./config.py) for further information.
 
+## Run experiments programatically
+
+You can run some experiments programatically by modifieing and running `run_experiment.py`.
+
+It generates CL-Commands for configurations you want to test on. Although it uses multiprocessing to leverage the training speed. It is best for letting it run on a server.
+
 ## Contact
 
 I'm open for questions and discussions. Just open a github issue.

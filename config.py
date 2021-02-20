@@ -2,7 +2,7 @@ from datetime import datetime
 from pathlib import Path, PurePath
 import argparse
 import json
-import sys
+import sys, os
 import logging
 
 ### CONSTANTS
@@ -56,7 +56,7 @@ BASE_PATH = Path.cwd() / args.result_dir
 MODEL_NAME = args.algo.upper()
 # Create paths
 timestr = datetime.now().strftime('%Y-%m-%d_%H-%M')
-base_path = BASE_PATH / MODEL_NAME / timestr
+base_path = BASE_PATH / MODEL_NAME / str(timestr + "_" + str(os.getpid()))
 base_path.mkdir(parents=True, exist_ok=True)
 env_path = base_path / ENV_INFO_PATH
 tb_path = base_path / TB_LOGS_PATH

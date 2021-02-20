@@ -41,7 +41,7 @@ def gen_args(baseline: bool) -> list:
 if __name__ == "__main__":
     # Set baseline parameter of gen_args to False to run the actual experiment
     # If it is true you generate data for baseline comparison
-    param_lists = gen_args(baseline = True)
+    param_lists = gen_args(baseline = False)
     param_strings = [" ".join(lst) for lst in param_lists]
     cmd_strings = ["python main.py " + item for item in param_strings]
     

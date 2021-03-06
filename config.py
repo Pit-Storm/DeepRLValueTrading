@@ -7,7 +7,6 @@ import logging
 
 ### CONSTANTS
 seed = 42
-num_envs = 1
 # Tensorboard Logs path slice
 TB_LOGS_PATH = "tb_logs"
 # Best Model save path slice
@@ -19,7 +18,6 @@ ENV_INFO_PATH = "env_info"
 basic_algos = ["BUYHOLD", "RANDOM"]
 drl_algos = ["A2C", "PPO", "DDPG"]
 algos = basic_algos + drl_algos
-policies = ["MlpLstmPolicy", "MlpPolicy"]
 
 # argparse arguments
 parser = argparse.ArgumentParser(description="Train and Evaluate different Deep RL Algos for trading. Some algorithms are there for backtesting the DRL ones.")
@@ -30,8 +28,9 @@ parser.add_argument("--deterministic", action="store_true", default=False, help=
 parser.add_argument("--episodic", action="store_true", default=False, help="Set it, to give reward only on the end of episode. If unset rearding every step.")
 parser.add_argument("--fee", action="store", default=0.001, type=float, help="Percentage of costs per trade.")
 parser.add_argument("--learn_steps", action="store", default=15000, type=int, help="Number of timesteps the Agent will learn. Only for DRL algos.")
-parser.add_argument("--policy", action="store", default="MlpLstmPolicy", type=str, choices=policies, help="DDPG always uses non recurrent.")
+parser.add_argument("--num_envs", action="store", default=4, type=int, help="Number of Envs (=Agents) to train with for A2C and PPO. Default is 4")
 parser.add_argument("--result_dir", action="store", default="results", type=str, help="Base folder to store results in. Default: %(default)s")
+parser.add_argument("--num_stacks", action="store", default=5, type=int, help="Number of observations stacked together. Set 0 to deactivate. Default is 5.")
 parser.add_argument("--scaling", action="store", default=100, type=int, help="Max possible trades per share per step.")
 parser.add_argument("--test_eps", action="store", default=100, type=int, help="Takes effect if --deterministic is unset.")
 parser.add_argument("--trainsampling", action="store_true", default=False, help="Sample --yearrange timeperiod out of training data for every episode.")
@@ -50,13 +49,15 @@ TRADE_FEE_PRCT = args.fee
 # to get the actual number of trades per share per step
 # This is Equal to the maximum number of buy/sell actions per share and step
 ACTION_SCALING = args.scaling
+# Number of observations stacked together
+NUM_STACKS = abs(args.num_stacks)
 # Base Path
 BASE_PATH = Path.cwd() / args.result_dir
 # What model to train/evaluate?
 MODEL_NAME = args.algo.upper()
 # Create paths
-timestr = datetime.now().strftime('%Y-%m-%d_%H-%M')
-base_path = BASE_PATH / MODEL_NAME / str(timestr + "_" + str(os.getpid()))
+timestr = datetime.now().strftime('%Y-%m-%d_%H-%M-%S.%f')
+base_path = BASE_PATH / MODEL_NAME / timestr
 base_path.mkdir(parents=True, exist_ok=True)
 env_path = base_path / ENV_INFO_PATH
 tb_path = base_path / TB_LOGS_PATH
@@ -65,7 +66,7 @@ data_path = Path.cwd().joinpath("data","stocksdata_all.csv")
 
 # Set vars in dependence of the model we train/evaluate
 if MODEL_NAME in basic_algos:
-    args.policy = None
+    args.num_envs = 1
     cagr = args.cagr
     episodic = args.episodic
     deterministic = args.deterministic = None
@@ -76,7 +77,7 @@ if MODEL_NAME in basic_algos:
     val_freq = args.val_freq = None
     yearrange = args.yearrange
 elif MODEL_NAME in drl_algos:
-    args.policy = "MlpPolicy" if MODEL_NAME == "DDPG" else args.policy
+    args.num_envs = 1 if MODEL_NAME == "DDPG" else args.num_envs
     cagr = args.cagr
     episodic = args.episodic
     deterministic = args.deterministic
@@ -90,7 +91,8 @@ elif MODEL_NAME in drl_algos:
         val_freq = args.val_freq
     yearrange = args.yearrange
 
-    POLICY = args.policy
+POLICY = "MlpPolicy"
+num_envs = args.num_envs
 
 with open(base_path.joinpath("run_args.json"), "w") as fp:
     json.dump(vars(args), fp, indent=4, sort_keys=True)

@@ -4,6 +4,7 @@ from gym.utils import seeding
 import numpy as np
 import pandas as pd
 from dateutil.relativedelta import relativedelta
+from datetime import datetime
 import json
 from pathlib import Path, PurePath
 import config
@@ -32,6 +33,7 @@ class valueTradingEnv(Env):
         self.cagr = cagr
         self.df_dt_filter = self.df.index.get_level_values(level="date")
         self.indicators = self.df.columns.tolist()
+        self.init_time =  datetime.now().strftime('%H-%M-%S-%f')
         self.num_symbols = len(self.df.index.get_level_values(level="symbol").unique().tolist())
         self.num_eps = 0
         self.fee = config.TRADE_FEE_PRCT
@@ -181,10 +183,10 @@ class valueTradingEnv(Env):
             step_reward = 0.0
         else:
             if self.cagr:
-                # CAGR towards actual step
+                # Compound average growth rate towards actual step
                 step_reward = self.episode_totalValues[:self.date_idx+1].pct_change().add(1).prod() - 1
             else:
-                # Rolling compound growth rate
+                # Compound rolling growth rate towards actual step
                 step_reward = (self.episode_totalValues[:self.date_idx+1].pct_change().add(1).cumprod() - 1).values[-1]
 
         # set new_state as current state
@@ -231,7 +233,7 @@ class valueTradingEnv(Env):
             self.num_eps += 1
             # Save info container to json file
             if not isinstance(self.save_path, type(None)):
-                filename = "episode_" + str(self.num_eps).rjust(4, "0") + ".json"
+                filename = str(self.init_time) + "_episode-" + str(self.num_eps).rjust(4, "0") + ".json"
                 jsonpath = self.save_path.joinpath(filename)
                 with open(jsonpath, 'w') as fp:
                     json.dump(self.info, fp, indent=4)

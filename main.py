@@ -14,7 +14,7 @@ from algos.basic import buyHold
 from stable_baselines import A2C, PPO2, DDPG
 from stable_baselines.ddpg.policies import MlpPolicy
 from stable_baselines.common.noise import NormalActionNoise, OrnsteinUhlenbeckActionNoise, AdaptiveParamNoiseSpec
-from stable_baselines.common.vec_env import DummyVecEnv, VecCheckNan
+from stable_baselines.common.vec_env import DummyVecEnv, VecFrameStack
 from stable_baselines.common.callbacks import EvalCallback
 from stable_baselines.common.evaluation import evaluate_policy
 
@@ -23,19 +23,21 @@ def DRL() -> None:
     # callback for validation
     eval_callback = EvalCallback(val_env, best_model_save_path=config.val_path,
                              log_path=config.val_path, eval_freq=config.val_freq, verbose=config.verbosity,
-                             deterministic=config.deterministic, n_eval_episodes=config.val_eps, )
+                             deterministic=config.deterministic, n_eval_episodes=config.val_eps)
 
     ### SETUP AND TRAIN
     # Setup model
     if config.MODEL_NAME == "A2C":
         model = A2C(config.POLICY, train_env, verbose=config.verbosity, tensorboard_log=config.tb_path, seed=config.seed)
     elif config.MODEL_NAME == "PPO":
-        model = PPO2(config.POLICY, train_env, verbose=config.verbosity, tensorboard_log=config.tb_path, nminibatches=1, seed=config.seed)
+        mbatches = config.num_envs // 2 if config.num_envs % 2 == 0 else 1
+        model = PPO2(config.POLICY, train_env, verbose=config.verbosity, tensorboard_log=config.tb_path, nminibatches=mbatches, seed=config.seed)
     elif config.MODEL_NAME == "DDPG":
         # the noise objects for DDPG
         n_actions = train_env.action_space.shape[-1]
         param_noise = None
-        action_noise = OrnsteinUhlenbeckActionNoise(mean=np.zeros(n_actions), sigma=float(0.5) * np.ones(n_actions))
+        # action_noise = OrnsteinUhlenbeckActionNoise(mean=np.zeros(n_actions), sigma=float(0.5) * np.ones(n_actions))
+        action_noise = NormalActionNoise(mean=np.zeros(n_actions), sigma=float(0.4) * np.ones(n_actions))
         model = DDPG(config.POLICY, train_env, param_noise=param_noise, action_noise=action_noise, verbose=config.verbosity, tensorboard_log=config.tb_path, seed=config.seed)
 
     logger.warn(f"{os.getpid()} | {config.MODEL_NAME} Model created. Starting to learn...")
@@ -103,24 +105,26 @@ if __name__ == "__main__":
     logger.info(f"Data loaded and split.")
 
     # Training Env
-    train_env = DummyVecEnv([lambda: valueTradingEnv(df=train, sample=config.trainsampling, episodic=config.episodic, yearrange=config.yearrange,
-                            cagr=config.cagr, save_path=config.env_path.joinpath("train")) for i in range(config.num_envs)])
-    train_env = VecCheckNan(train_env, raise_exception=True)
+    train_env = DummyVecEnv([(lambda: valueTradingEnv(df=train, sample=config.trainsampling, episodic=config.episodic, yearrange=config.yearrange,
+                            cagr=config.cagr, save_path=config.env_path.joinpath("train"))) for i in range(config.num_envs)])
 
     # Validation Env
     val_env = DummyVecEnv([lambda: valueTradingEnv(df=val, sample=False, episodic=config.episodic, yearrange=config.yearrange,
-                            cagr=config.cagr, save_path=config.env_path.joinpath("val")) for i in range(config.num_envs)])
-    val_env = VecCheckNan(val_env, raise_exception=True)
+                            cagr=config.cagr)])
 
     # test_env
     test_env = DummyVecEnv([lambda: valueTradingEnv(df=test, sample=False, episodic=config.episodic, yearrange=config.yearrange,
                             cagr=config.cagr, save_path=config.env_path.joinpath("test"))])
-    test_env = VecCheckNan(test_env, raise_exception=True)
 
     logger.info(f"Environments created.")
 
     # Call the specific Model function
     if config.MODEL_NAME in config.drl_algos:
+        # Setup stacked envs if enabled
+        if config.NUM_STACKS > 0:
+            train_env = VecFrameStack(train_env, n_stack=config.NUM_STACKS)
+            val_env = VecFrameStack(val_env, n_stack=config.NUM_STACKS)
+            test_env = VecFrameStack(test_env, n_stack=config.NUM_STACKS)
         DRL()
     elif config.MODEL_NAME in config.basic_algos:
         basic()

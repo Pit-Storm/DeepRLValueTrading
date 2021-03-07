@@ -54,7 +54,7 @@ def DRL() -> None:
     elif config.MODEL_NAME == "DDPG":
         model = DDPG.load(load_path=config.val_path.joinpath("best_model.zip"))
 
-    logger.info(f"Best model loaded. Start testing...")
+    logger.info(f"{os.getpid()} | Best model loaded. Start testing...")
     ### EVAL MODEL
     # Make prediction in test_env
     _ = evaluate_policy(model=model, env=test_env, deterministic=config.deterministic,
@@ -80,10 +80,10 @@ def basic() -> None:
                 action = buyHold(state[0], env.action_space)
             state, reward, done, _ = env.step([action])
         ep_rewards.append(reward[0])
-        if config.verbosity: logger.info(f"{episode+1}. Episode last reward: {ep_rewards[-1]}")
+        if config.verbosity: logger.info(f"{os.getpid()} | {episode+1}. Episode last reward: {ep_rewards[-1]}")
         if (episode+1) % 10 == 0 or (episode+1) == config.test_eps:
             mean_reward = sum(ep_rewards) / len(ep_rewards)
-            logger.info(f"Mean reward after {episode+1}th Episode: {mean_reward}")
+            logger.info(f"{os.getpid()} | Mean reward after {episode+1}th Episode: {mean_reward}")
 
     logger.warn(f"{os.getpid()} | Trading with {config.MODEL_NAME} algo done.")
 
@@ -102,29 +102,33 @@ if __name__ == "__main__":
     # make train, val, test df
     train, val, test = dth.train_val_test_split(df=stocks_df, years=config.yearrange)
 
-    logger.info(f"Data loaded and split.")
+    logger.info(f"{os.getpid()} | Data loaded and split.")
 
-    # Training Env
-    train_env = DummyVecEnv([(lambda: valueTradingEnv(df=train, sample=config.trainsampling, episodic=config.episodic, yearrange=config.yearrange,
-                            cagr=config.cagr, save_path=config.env_path.joinpath("train"), seeding=config.seeding)) for i in range(config.num_envs)])
-
-    # Validation Env
-    val_env = DummyVecEnv([lambda: valueTradingEnv(df=val, sample=False, episodic=config.episodic, yearrange=config.yearrange,
-                            cagr=config.cagr)])
-
-    # test_env
+    # This env is required in any case.
+    # Others are created if DRL algo
     test_env = DummyVecEnv([lambda: valueTradingEnv(df=test, sample=False, episodic=config.episodic, yearrange=config.yearrange,
                             cagr=config.cagr, save_path=config.env_path.joinpath("test"))])
 
-    logger.info(f"Environments created.")
+    logger.info(f"{os.getpid()} | Test environment created.")
 
     # Call the specific Model function
     if config.MODEL_NAME in config.drl_algos:
+        # Training Env
+        train_env = DummyVecEnv([(lambda: valueTradingEnv(df=train, sample=config.trainsampling, episodic=config.episodic, yearrange=config.yearrange,
+                                cagr=config.cagr, save_path=config.env_path.joinpath("train"), seeding=config.seeding)) for i in range(config.num_envs)])
+
+        # Validation Env
+        val_env = DummyVecEnv([lambda: valueTradingEnv(df=val, sample=False, episodic=config.episodic, yearrange=config.yearrange,
+                                cagr=config.cagr)])
+
+        logger.info(f"{os.getpid()} | Train and Val environments created.")
+
         # Setup stacked envs if enabled
         if config.NUM_STACKS > 0:
             train_env = VecFrameStack(train_env, n_stack=config.NUM_STACKS)
             val_env = VecFrameStack(val_env, n_stack=config.NUM_STACKS)
             test_env = VecFrameStack(test_env, n_stack=config.NUM_STACKS)
+            logger.info(f"{os.getpid()} | Prepared environments for framestacking.")
         DRL()
     elif config.MODEL_NAME in config.basic_algos:
         basic()

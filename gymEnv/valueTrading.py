@@ -74,7 +74,7 @@ class valueTradingEnv(Env):
     def _sell_stock(self, num, index):
         # Are we selling less or equal num of stocks we have?
         if self.new_state[1+index] >= num:
-            # get price of stock to calculate amount
+            # get open price of stock to calculate amount
             price = self.new_state[1+self.num_symbols+index]
             amount = price * num
             # calculate cost
@@ -87,7 +87,7 @@ class valueTradingEnv(Env):
             pass
     
     def _buy_stock(self, num, index):
-        # get price of stock
+        # get open price of stock
         price = self.new_state[1+self.num_symbols+index]
         amount = price * num
         # calculate cost
@@ -140,11 +140,16 @@ class valueTradingEnv(Env):
         self.cost = [0]*self.num_symbols
         # Skale action by item
         action = np.array([int(item*self.scaling) for item in action])
-        real_action = action.copy() # save for info
+        # real_action = action.copy() # save for info
 
         # count date one day ahead
         self.date_idx += 1
         self.date = self.data_dt_unique[self.date_idx]
+        # Check done conditions
+        # Is date equal to end_date?
+        if self.date == self.end_date:
+            self.done = True
+
         # set up new state based on current state
         # We manipulate the portfolios cash and number of shares in new_state when buying and selling
         # we need the old portfolio balance to calculate the reward
@@ -175,44 +180,30 @@ class valueTradingEnv(Env):
         for idx in buy_indices:
             self._buy_stock(int(action[idx]), idx)
 
-        # calculate reward
-        new_total_value = self.new_state[0] + \
+        # Is the cash lower than x% of init_cash?
+        # If we set this to 0.0 we allow to don't hold cash anyway
+        if self.new_state[0] < self.init_cash*0:
+            self.done = True
+
+        ### calculate reward
+        # We calculate the total value from the closing price
+        self.episode_totalValues[self.date_idx] = self.new_state[0] + \
                 sum(np.array(self.new_state[1:(1+self.num_symbols)]) * \
                     np.array(self.new_state[(1+self.num_symbols*2):(1+self.num_symbols*3)]))
-
-        # We create a compount reward to avoid volatility
-        self.episode_totalValues[self.date_idx] = new_total_value
-        if self.episodic:
+        # We use growth rates to avoid volatility
+        if self.episodic and not self.done:
             step_reward = 0.0
         else:
             if self.cagr:
-                # Compound average growth rate towards actual step
-                step_reward = self.episode_totalValues[:self.date_idx+1].pct_change().add(1).prod() - 1
+                # Compound growth rate towards actual step
+                step_reward = ((self.episode_totalValues[self.date_idx] / self.episode_totalValues[0]) ** (1/self.date_idx)) - 1.0
             else:
-                # Compound rolling growth rate towards actual step
-                step_reward = (self.episode_totalValues[:self.date_idx+1].pct_change().add(1).cumprod() - 1).values[-1]
+                # Growth rate / Rate of return towards actual step
+                step_reward = self.episode_totalValues[self.date_idx] / self.episode_totalValues[0] - 1.0
 
         # set new_state as current state
         self.state = self.new_state
 
-        # Check done conditions
-        # Is date equal to end_date?
-        if self.date == self.end_date:
-            self.done = True
-        # Is the cash lower than x% of init_cash?
-        # If we set this to 0.0 we allow to don't hold cash anyway
-        if self.state[0] < self.init_cash*0:
-            self.done = True
-
-        if self.done and self.episodic:
-            # calculate the total episodic reward
-            if self.cagr:
-                # CAGR towards actual step
-                step_reward = self.episode_totalValues[:self.date_idx+1].pct_change().add(1).prod() - 1
-            else:
-                # Rolling compound growth rate
-                step_reward = (self.episode_totalValues[:self.date_idx+1].pct_change().add(1).cumprod() - 1).values[-1]
-        
         # add the values to the info container
         self.info["dates"].append(self.date.strftime("%Y-%m-%d"))
         self.info["cashes"].append(self.state[0])
@@ -234,7 +225,7 @@ class valueTradingEnv(Env):
 
             # Count a episode
             self.num_eps += 1
-            # Save info container to json file
+            # Save info container to json in path if one is given
             if not isinstance(self.save_path, type(None)):
                 filename = str(self.init_time) + "_episode-" + str(self.num_eps).rjust(4, "0") + ".json"
                 jsonpath = self.save_path.joinpath(filename)
@@ -266,7 +257,7 @@ class valueTradingEnv(Env):
         # Reset date_idx
         self.date_idx = 0
         # get first date object
-        self.date =self.data_dt_unique[self.date_idx]
+        self.date = self.data_dt_unique[self.date_idx]
         # set real end date
         self.end_date = self.data_dt_unique[-1]
         self.done = False

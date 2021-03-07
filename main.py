@@ -57,9 +57,9 @@ def DRL() -> None:
     logger.info(f"{os.getpid()} | Best model loaded. Start testing...")
     ### EVAL MODEL
     # Make prediction in test_env
-    _ = evaluate_policy(model=model, env=test_env, deterministic=config.deterministic,
-                                n_eval_episodes=config.test_eps, return_episode_rewards=True)
-
+    episode_mean, episode_std = evaluate_policy(model=model, env=test_env, deterministic=config.deterministic,
+                                n_eval_episodes=config.test_eps, return_episode_rewards=False)
+    logger.info(f"{os.getpid()} | Mean ep reward {episode_mean} and std ep reward {episode_std}.")
     logger.warn(f"{os.getpid()} | Testing done.")
 
 def basic() -> None:

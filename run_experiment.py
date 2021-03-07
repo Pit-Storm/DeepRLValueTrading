@@ -21,19 +21,20 @@ def gen_args(baseline: bool) -> list:
     # val_freq = int      # def: 1e3
     # yearrange = int     # def: 4
 
-    cagr = ["--cagr", ""]
-    episodic = ["--episodic", ""]
-    learn_steps = ["--learn_steps=500000"]
-    trainsampling = ["--trainsampling", ""]
-    val_freq = ["--val_freq=2500"]
-    yearrange = ["--yearrange=2","--yearrange=4"]
-
     if baseline:
         baseline = ["--algo=random","--algo=buyhold"]
-        lsts = [baseline, cagr, yearrange]
+        lsts = [baseline, ["--episodic"], ["--test_eps=100"]]
     else:
+        cagr = ["--cagr", ""]
+        deterministic = ["--deterministic"]
+        episodic = ["--episodic", ""]
+        learn_steps = ["--learn_steps=500000"]
+        num_stack = ["--num_stack=3", "--num_stack=0"]
+        trainsampling = ["--trainsampling", ""]
+        val_freq = ["--val_freq=2500"]
+
         drl = ["--algo=DDPG", "--algo=A2C", "--algo=PPO"]
-        lsts = [drl, cagr, episodic, learn_steps, trainsampling, val_freq, yearrange]
+        lsts = [drl, cagr, deterministic, episodic, learn_steps, num_stack, trainsampling, val_freq]
     
     params = list(itertools.product(*lsts))
     return params

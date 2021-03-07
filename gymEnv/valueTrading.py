@@ -58,7 +58,7 @@ class valueTradingEnv(Env):
 
         # If we want to sample during training, we have to seed the RNG
         if self.sample:
-            assert isinstance(self.sseing, type(None)), "If you want to sample, you have to set a seeding."
+            assert not isinstance(self.seeding, type(None)), "If you want to sample, you have to set a seeding."
             self.seed(seed=self.seeding)
 
         # Spaces

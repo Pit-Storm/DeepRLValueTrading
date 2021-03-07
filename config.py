@@ -6,7 +6,6 @@ import sys, os
 import logging
 
 ### CONSTANTS
-seed = 42
 # Tensorboard Logs path slice
 TB_LOGS_PATH = "tb_logs"
 # Best Model save path slice
@@ -32,6 +31,7 @@ parser.add_argument("--num_envs", action="store", default=4, type=int, help="Num
 parser.add_argument("--result_dir", action="store", default="results", type=str, help="Base folder to store results in. Default: %(default)s")
 parser.add_argument("--num_stacks", action="store", default=5, type=int, help="Number of observations stacked together. Set 0 to deactivate. Default is 5.")
 parser.add_argument("--scaling", action="store", default=100, type=int, help="Max possible trades per share per step.")
+parser.add_argument("--seeding", action="store", default=42, type=int, help="Seeding for random number generator. Default is 42.")
 parser.add_argument("--test_eps", action="store", default=100, type=int, help="Takes effect if --deterministic is unset.")
 parser.add_argument("--trainsampling", action="store_true", default=False, help="Sample --yearrange timeperiod out of training data for every episode.")
 parser.add_argument("--val_eps", action="store", default=10, type=int, help="Takes effect if --deterministic is unset.")
@@ -41,6 +41,8 @@ parser.add_argument("--yearrange", action="store", default=4, type=int, help="Th
 args = parser.parse_args()
 
 ### GENERAL VARS
+# Seeding for random number generator
+seeding = abs(args.seeding)
 # How much cash does the agent have from beginning?
 INIT_CASH = args.cash
 # How much percent of the trade (num times price) will a trade cost?
@@ -78,13 +80,15 @@ if MODEL_NAME in basic_algos:
     yearrange = args.yearrange
 elif MODEL_NAME in drl_algos:
     args.num_envs = 1 if MODEL_NAME == "DDPG" else args.num_envs
+    args.test_eps = 1 if args.deterministic else args.test_eps
+    args.val_eps = 1 if args.deterministic else args.val_eps
     cagr = args.cagr
     episodic = args.episodic
     deterministic = args.deterministic
     learn_steps = args.learn_steps
-    test_eps = 1 if deterministic else args.test_eps
+    test_eps = args.test_eps
     trainsampling = args.trainsampling
-    val_eps = 1 if deterministic else args.val_eps
+    val_eps = args.val_eps
     if args.learn_steps < args.val_freq:
         val_freq = args.val_freq = args.learn_steps
     else:

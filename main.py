@@ -28,17 +28,17 @@ def DRL() -> None:
     ### SETUP AND TRAIN
     # Setup model
     if config.MODEL_NAME == "A2C":
-        model = A2C(config.POLICY, train_env, verbose=config.verbosity, tensorboard_log=config.tb_path, seed=config.seed)
+        model = A2C(config.POLICY, train_env, verbose=config.verbosity, tensorboard_log=config.tb_path, seed=config.seeding)
     elif config.MODEL_NAME == "PPO":
         mbatches = config.num_envs // 2 if config.num_envs % 2 == 0 else 1
-        model = PPO2(config.POLICY, train_env, verbose=config.verbosity, tensorboard_log=config.tb_path, nminibatches=mbatches, seed=config.seed)
+        model = PPO2(config.POLICY, train_env, verbose=config.verbosity, tensorboard_log=config.tb_path, nminibatches=mbatches, seed=config.seeding)
     elif config.MODEL_NAME == "DDPG":
         # the noise objects for DDPG
         n_actions = train_env.action_space.shape[-1]
         param_noise = None
         # action_noise = OrnsteinUhlenbeckActionNoise(mean=np.zeros(n_actions), sigma=float(0.5) * np.ones(n_actions))
         action_noise = NormalActionNoise(mean=np.zeros(n_actions), sigma=float(0.4) * np.ones(n_actions))
-        model = DDPG(config.POLICY, train_env, param_noise=param_noise, action_noise=action_noise, verbose=config.verbosity, tensorboard_log=config.tb_path, seed=config.seed)
+        model = DDPG(config.POLICY, train_env, param_noise=param_noise, action_noise=action_noise, verbose=config.verbosity, tensorboard_log=config.tb_path, seed=config.seeding)
 
     logger.warn(f"{os.getpid()} | {config.MODEL_NAME} Model created. Starting to learn...")
     ###
@@ -106,7 +106,7 @@ if __name__ == "__main__":
 
     # Training Env
     train_env = DummyVecEnv([(lambda: valueTradingEnv(df=train, sample=config.trainsampling, episodic=config.episodic, yearrange=config.yearrange,
-                            cagr=config.cagr, save_path=config.env_path.joinpath("train"))) for i in range(config.num_envs)])
+                            cagr=config.cagr, save_path=config.env_path.joinpath("train"), seeding=config.seeding)) for i in range(config.num_envs)])
 
     # Validation Env
     val_env = DummyVecEnv([lambda: valueTradingEnv(df=val, sample=False, episodic=config.episodic, yearrange=config.yearrange,

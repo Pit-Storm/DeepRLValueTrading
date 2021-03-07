@@ -17,16 +17,18 @@ class valueTradingEnv(Env):
         - df (pandas DataFrame): DF with 'date' and 'symbol' set as multilevel index and at least open and closing prices as first and second column. IMPORTANT: open and Closing price always has to be as first and second columns respectively for taking actions and calculating reward.
         - train (bool): Are we building the Env for training or not? It is used for calculation the daterante in DFs that are equal size of daterange.
         - yearrange (int): How many years will one episode take? DF has to be at least this range.
+        ...
     returns:
         A gym.Env object.
     """
     metadata = {'render.modes': "human"}
     
     def __init__(self, df: pd.DataFrame, sample: bool=False, episodic: bool=False,
-                save_path: Path=None, yearrange: int=4, cagr: bool=False):
+                save_path: Path=None, yearrange: int=4, cagr: bool=False, seeding: bool=None):
         # self variables
         self.df = df
         self.sample = sample
+        self.seeding = seeding
         self.episodic = episodic
         self.save_path = save_path
         self.yearrange = yearrange
@@ -56,7 +58,8 @@ class valueTradingEnv(Env):
 
         # If we want to sample during training, we have to seed the RNG
         if self.sample:
-            self.seed()
+            assert isinstance(self.sseing, type(None)), "If you want to sample, you have to set a seeding."
+            self.seed(seed=self.seeding)
 
         # Spaces
         self.action_space = spaces.Box(low = -1, high = 1,shape = (self.num_symbols,))
@@ -215,19 +218,19 @@ class valueTradingEnv(Env):
         self.info["cashes"].append(self.state[0])
         self.info["numShares"].append(self.state[1:(1+self.num_symbols)])
         self.info["totalValues"].append(self.episode_totalValues[self.date_idx])
-        self.info["realActions"].append(real_action.tolist())
+        # self.info["realActions"].append(real_action.tolist())
         self.info["rewards"].append(step_reward)
-        self.info["costs"].append(self.cost)
+        # self.info["costs"].append(self.cost)
 
         # Strip out the actual and the t-1 info to return it
         step_info = {key: value[-2:] for key,value in self.info.items()}
 
         if self.done:
-            # This is because the agent would not do another step if de env is done
+            # This is because the agent would not do another step if the episode is done
             # So we need to append some zeros to make the lists the identical lengths
-            self.info["realActions"].append([0]*self.num_symbols)
+            # self.info["realActions"].append([0]*self.num_symbols)
             self.info["rewards"].append(0)
-            self.info["costs"].append(0)
+            # self.info["costs"].append(0)
 
             # Count a episode
             self.num_eps += 1
@@ -236,7 +239,7 @@ class valueTradingEnv(Env):
                 filename = str(self.init_time) + "_episode-" + str(self.num_eps).rjust(4, "0") + ".json"
                 jsonpath = self.save_path.joinpath(filename)
                 with open(jsonpath, 'w') as fp:
-                    json.dump(self.info, fp, indent=4)
+                    json.dump(self.info, fp)
 
         return (self.state, step_reward, self.done, step_info)
 
@@ -282,9 +285,9 @@ class valueTradingEnv(Env):
             "cashes": [self.state[0]],
             "numShares": [self.state[1:(1+self.num_symbols)]],
             "totalValues": [self.episode_totalValues[self.date_idx]],
-            "realActions": [],
-            "rewards": [],
-            "costs": []
+            # "realActions": [],
+            "rewards": []
+            # "costs": []
         }
 
         return self.state

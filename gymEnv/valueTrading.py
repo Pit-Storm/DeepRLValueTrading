@@ -4,6 +4,7 @@ from gym.utils import seeding
 import numpy as np
 import pandas as pd
 from dateutil.relativedelta import relativedelta
+from datetime import datetime
 import json
 from pathlib import Path, PurePath
 import config
@@ -16,22 +17,25 @@ class valueTradingEnv(Env):
         - df (pandas DataFrame): DF with 'date' and 'symbol' set as multilevel index and at least open and closing prices as first and second column. IMPORTANT: open and Closing price always has to be as first and second columns respectively for taking actions and calculating reward.
         - train (bool): Are we building the Env for training or not? It is used for calculation the daterante in DFs that are equal size of daterange.
         - yearrange (int): How many years will one episode take? DF has to be at least this range.
+        ...
     returns:
         A gym.Env object.
     """
     metadata = {'render.modes': "human"}
     
     def __init__(self, df: pd.DataFrame, sample: bool=False, episodic: bool=False,
-                save_path: Path=None, yearrange: int=4, cagr: bool=False):
+                save_path: Path=None, yearrange: int=4, cagr: bool=False, seeding: bool=None):
         # self variables
         self.df = df
         self.sample = sample
+        self.seeding = seeding
         self.episodic = episodic
         self.save_path = save_path
         self.yearrange = yearrange
         self.cagr = cagr
         self.df_dt_filter = self.df.index.get_level_values(level="date")
         self.indicators = self.df.columns.tolist()
+        self.init_time =  datetime.now().strftime('%H-%M-%S-%f')
         self.num_symbols = len(self.df.index.get_level_values(level="symbol").unique().tolist())
         self.num_eps = 0
         self.fee = config.TRADE_FEE_PRCT
@@ -54,7 +58,8 @@ class valueTradingEnv(Env):
 
         # If we want to sample during training, we have to seed the RNG
         if self.sample:
-            self.seed()
+            assert not isinstance(self.seeding, type(None)), "If you want to sample, you have to set a seeding."
+            self.seed(seed=self.seeding)
 
         # Spaces
         self.action_space = spaces.Box(low = -1, high = 1,shape = (self.num_symbols,))
@@ -69,7 +74,7 @@ class valueTradingEnv(Env):
     def _sell_stock(self, num, index):
         # Are we selling less or equal num of stocks we have?
         if self.new_state[1+index] >= num:
-            # get price of stock to calculate amount
+            # get open price of stock to calculate amount
             price = self.new_state[1+self.num_symbols+index]
             amount = price * num
             # calculate cost
@@ -82,7 +87,7 @@ class valueTradingEnv(Env):
             pass
     
     def _buy_stock(self, num, index):
-        # get price of stock
+        # get open price of stock
         price = self.new_state[1+self.num_symbols+index]
         amount = price * num
         # calculate cost
@@ -135,11 +140,16 @@ class valueTradingEnv(Env):
         self.cost = [0]*self.num_symbols
         # Skale action by item
         action = np.array([int(item*self.scaling) for item in action])
-        real_action = action.copy() # save for info
+        # real_action = action.copy() # save for info
 
         # count date one day ahead
         self.date_idx += 1
         self.date = self.data_dt_unique[self.date_idx]
+        # Check done conditions
+        # Is date equal to end_date?
+        if self.date == self.end_date:
+            self.done = True
+
         # set up new state based on current state
         # We manipulate the portfolios cash and number of shares in new_state when buying and selling
         # we need the old portfolio balance to calculate the reward
@@ -170,71 +180,57 @@ class valueTradingEnv(Env):
         for idx in buy_indices:
             self._buy_stock(int(action[idx]), idx)
 
-        # calculate reward
-        new_total_value = self.new_state[0] + \
+        # Is the cash lower than x% of init_cash?
+        # If we set this to 0.0 we allow to don't hold cash anyway
+        if self.new_state[0] < self.init_cash*0:
+            self.done = True
+
+        ### calculate reward
+        # We calculate the total value from the closing price
+        self.episode_totalValues[self.date_idx] = self.new_state[0] + \
                 sum(np.array(self.new_state[1:(1+self.num_symbols)]) * \
                     np.array(self.new_state[(1+self.num_symbols*2):(1+self.num_symbols*3)]))
-
-        # We create a compount reward to avoid volatility
-        self.episode_totalValues[self.date_idx] = new_total_value
-        if self.episodic:
+        # We use growth rates to avoid volatility
+        if self.episodic and not self.done:
             step_reward = 0.0
         else:
             if self.cagr:
-                # CAGR towards actual step
-                step_reward = self.episode_totalValues[:self.date_idx+1].pct_change().add(1).prod() - 1
+                # Compound growth rate towards actual step
+                step_reward = ((self.episode_totalValues[self.date_idx] / self.episode_totalValues[0]) ** (1/self.date_idx)) - 1.0
             else:
-                # Rolling compound growth rate
-                step_reward = (self.episode_totalValues[:self.date_idx+1].pct_change().add(1).cumprod() - 1).values[-1]
+                # Growth rate / Rate of return towards actual step
+                step_reward = self.episode_totalValues[self.date_idx] / self.episode_totalValues[0] - 1.0
 
         # set new_state as current state
         self.state = self.new_state
 
-        # Check done conditions
-        # Is date equal to end_date?
-        if self.date == self.end_date:
-            self.done = True
-        # Is the cash lower than x% of init_cash?
-        # If we set this to 0.0 we allow to don't hold cash anyway
-        if self.state[0] < self.init_cash*0:
-            self.done = True
-
-        if self.done and self.episodic:
-            # calculate the total episodic reward
-            if self.cagr:
-                # CAGR towards actual step
-                step_reward = self.episode_totalValues[:self.date_idx+1].pct_change().add(1).prod() - 1
-            else:
-                # Rolling compound growth rate
-                step_reward = (self.episode_totalValues[:self.date_idx+1].pct_change().add(1).cumprod() - 1).values[-1]
-        
         # add the values to the info container
         self.info["dates"].append(self.date.strftime("%Y-%m-%d"))
         self.info["cashes"].append(self.state[0])
         self.info["numShares"].append(self.state[1:(1+self.num_symbols)])
         self.info["totalValues"].append(self.episode_totalValues[self.date_idx])
-        self.info["realActions"].append(real_action.tolist())
+        # self.info["realActions"].append(real_action.tolist())
         self.info["rewards"].append(step_reward)
-        self.info["costs"].append(self.cost)
+        # self.info["costs"].append(self.cost)
 
         # Strip out the actual and the t-1 info to return it
         step_info = {key: value[-2:] for key,value in self.info.items()}
 
         if self.done:
-            # This is because the agent would not do another step if de env is done
+            # This is because the agent would not do another step if the episode is done
             # So we need to append some zeros to make the lists the identical lengths
-            self.info["realActions"].append([0]*self.num_symbols)
+            # self.info["realActions"].append([0]*self.num_symbols)
             self.info["rewards"].append(0)
-            self.info["costs"].append(0)
+            # self.info["costs"].append(0)
 
             # Count a episode
             self.num_eps += 1
-            # Save info container to json file
+            # Save info container to json in path if one is given
             if not isinstance(self.save_path, type(None)):
-                filename = "episode_" + str(self.num_eps).rjust(4, "0") + ".json"
+                filename = str(self.init_time) + "_episode-" + str(self.num_eps).rjust(4, "0") + ".json"
                 jsonpath = self.save_path.joinpath(filename)
                 with open(jsonpath, 'w') as fp:
-                    json.dump(self.info, fp, indent=4)
+                    json.dump(self.info, fp)
 
         return (self.state, step_reward, self.done, step_info)
 
@@ -261,7 +257,7 @@ class valueTradingEnv(Env):
         # Reset date_idx
         self.date_idx = 0
         # get first date object
-        self.date =self.data_dt_unique[self.date_idx]
+        self.date = self.data_dt_unique[self.date_idx]
         # set real end date
         self.end_date = self.data_dt_unique[-1]
         self.done = False
@@ -280,9 +276,9 @@ class valueTradingEnv(Env):
             "cashes": [self.state[0]],
             "numShares": [self.state[1:(1+self.num_symbols)]],
             "totalValues": [self.episode_totalValues[self.date_idx]],
-            "realActions": [],
-            "rewards": [],
-            "costs": []
+            # "realActions": [],
+            "rewards": []
+            # "costs": []
         }
 
         return self.state

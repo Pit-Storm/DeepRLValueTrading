@@ -22,7 +22,7 @@ def DRL() -> None:
     ### PREPARATION
     # callback for validation
     eval_callback = EvalCallback(val_env, best_model_save_path=config.val_path,
-                             log_path=config.val_path, eval_freq=config.val_freq, verbose=config.verbosity,
+                             log_path=config.val_path, eval_freq=config.val_freq//config.num_envs, verbose=config.verbosity,
                              deterministic=config.deterministic, n_eval_episodes=config.val_eps)
 
     ### SETUP AND TRAIN

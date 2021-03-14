@@ -16,15 +16,17 @@ stocksdata_fp = Path.cwd().parent / "data" / "stocksdata_all.csv"
 stocksdata_df = dth.load_data(stocksdata_fp)
 *_, stocksdata_df = dth.train_val_test_split(stocksdata_df)
 dates = stocksdata_df.index.get_level_values(level="date").unique().tolist()
-# %%
+###
 # Generate Multiindex DF for all test results over all experiments over all algos
 results_dir = Path.cwd().parent / "results"
 tests = []
+exp_args = []
 
 algo_dirs = [algo_dir for algo_dir in results_dir.iterdir() if algo_dir.is_dir()]
 for algo_dir in algo_dirs:
     exp_dirs = [exp_dir for exp_dir in algo_dir.iterdir() if exp_dir.is_dir()]
     for exp_idx, exp_dir in enumerate(exp_dirs):
+        exp_args.append(pd.read_json(path_or_buf=exp_dir.joinpath("run_args.json"), typ="ser"))
         test_files = [test_file for test_file in exp_dir.rglob("env_info/test/*.json") if test_file.is_file()]
         for test_idx, test_file in enumerate(test_files):
             total_values = pd.read_json(test_file)["totalValues"]
@@ -39,20 +41,21 @@ for algo_dir in algo_dirs:
 
 # concatenate all tests to one df
 tests_df = pd.concat(tests).set_index(["algo", "exp", "test", "date"])
+# and all exp_args to one df
+exp_args_df = pd.DataFrame(exp_args)
+exp_args_df["exp_idx"] = exp_args_df.groupby(by="algo").cumcount()
+exp_args_df = exp_args_df.set_index(["algo","exp_idx"])
 
 # Get Sharpe ratio for all tests
 tests_sharpe = tests_df.groupby(level=["algo", "exp", "test"]).apply(qs.stats.sharpe).rename(columns={"totalValues": "sharpe"})
 # Get mean sharpe over the tests for each run
 tests_sharpe_mean = tests_sharpe.groupby(level=["algo", "exp"]).mean()
 # save best run idx to a dict with algo names as keys
-best_exp_idx = dict([item for sublist in tests_sharpe_mean.groupby(level=["algo"]).idxmax().values.tolist() for item in sublist])
+best_exp_idx = pd.Series(dict([item for sublist in tests_sharpe_mean.groupby(level=["algo"]).idxmax().values.tolist() for item in sublist]))
 
 # Inside the best experiment, calculate the mean totalValue by date over all tests.
 # for that we have to slice out the best exp out of our overall df
-best_exp = []
-for algo_name, exp_idx in best_exp_idx.items():
-    best_exp.append(tests_df.loc[(algo_name, exp_idx, slice(None), slice(None)), slice(None)])
-
+best_exp = [tests_df.loc[(algo_name, exp_idx, slice(None), slice(None)), slice(None)] for algo_name, exp_idx in best_exp_idx.items()]
 best_exps_df = pd.concat(best_exp).reset_index(level="exp", drop=True).reorder_levels(["algo","date","test"])
 
 ###
@@ -60,7 +63,15 @@ best_exps_df = pd.concat(best_exp).reset_index(level="exp", drop=True).reorder_l
 best_exp_mean_df = best_exps_df.groupby(level=["algo","date"]).mean().unstack(level="algo")
 # Get rid of multilevel column names.
 best_exp_mean_df.columns = best_exp_mean_df.columns.droplevel(None)
-# %%
+
+###
+# Creating the best exps_args_df to show it later
+best_exp_args = [exp_args_df.loc[(algo_name, exp_idx), slice(None)] for algo_name, exp_idx in best_exp_idx.items()]
+best_exps_args_df = pd.DataFrame(best_exp_args).reset_index()
+best_exps_args_df[['algo','exp_idx']] = pd.DataFrame(best_exps_args_df["index"].tolist(), index= best_exps_args_df.index)
+best_exps_args_df = best_exps_args_df.drop(columns="index").set_index(["algo","exp_idx"])
+
+###
 ### Create indices series
 indices_fp = Path.cwd().parent / "data" / "indices_performance.csv"
 indices_df = dth.load_data(indices_fp)
@@ -101,18 +112,24 @@ portfolios_df = best_exp_mean_df.join(etf_ser)
 #                 title="Portfolio Values over Time")
 
 # %%
-# TODO: Sort the experiments that all same commands have same ID.
+drl_algos = ["A2C", "DDPG", "PPO"]
+
 # Matrix of Mean Sharpes (Experiment times Algorithms)
 mean_sharpes_df = tests_sharpe_mean.unstack(level=["algo"])
 mean_sharpes_df.columns = mean_sharpes_df.columns.droplevel(None)
 # Best experiment sharpe is highlighted
-mean_sharpes_df[["A2C", "DDPG", "PPO"]].style.highlight_max(axis=0)
+mean_sharpes_df[drl_algos].style.highlight_max(axis=0)
+
+# %%
+# Showing the variant args of the best experiments
+variant_args = ["cagr", "episodic","num_stacks", "trainsampling"]
+best_exps_args_df[variant_args].loc[drl_algos]
 # %%
 # Table for evaluation of best experiments for algos and Bench with:
     # Comp. overall Return
     # Comp. annual growth rate
     # Sharpe ratio
-    # Standard deviation
+    # Volatility (Standard deviation p.a.)
 metrics_df = pd.DataFrame(index=["Return", "Volatility p.a.", "CAGR", "Exp. Return p.a.", "Sharpe ratio"])
 
 interval = "M"
@@ -124,13 +141,11 @@ for column in portfolios_df.columns:
     exp_ret = qs.stats.expected_return(qs.utils.to_returns(portfolios_df[column].resample(interval).last()), aggregate="M")
     metrics_df[column] = [ret, vol/100, cagr, exp_ret, sharpe]
 
-
 # Higlight best algorithm
 metrics_df.style.highlight_max(axis=1)
 # %%
-# Plot a linechart for all portfolios resampled to monthly means.
+# Plot a linechart for all portfolios resampled to monthly last value.
 portfolios_df.resample("M").last().plot()
-
 
 # %%
 # TODO: Investigations

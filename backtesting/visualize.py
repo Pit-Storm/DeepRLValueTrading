@@ -13,8 +13,8 @@ qs.extend_pandas()
 # %%
 # Get tested dates out of stocksdata
 stocksdata_fp = Path.cwd().parent / "data" / "stocksdata_all.csv"
-stocksdata_df = dth.load_data(stocksdata_fp)
-*_, stocksdata_df = dth.train_val_test_split(stocksdata_df)
+stocksdata_all_df = dth.load_data(stocksdata_fp)
+*_, stocksdata_df = dth.train_val_test_split(stocksdata_all_df)
 dates = stocksdata_df.index.get_level_values(level="date").unique().tolist()
 ###
 # Generate Multiindex DF for all test results over all experiments over all algos
@@ -29,13 +29,15 @@ for algo_dir in algo_dirs:
         exp_args.append(pd.read_json(path_or_buf=exp_dir.joinpath("run_args.json"), typ="ser"))
         test_files = [test_file for test_file in exp_dir.rglob("env_info/test/*.json") if test_file.is_file()]
         for test_idx, test_file in enumerate(test_files):
-            total_values = pd.read_json(test_file)["totalValues"]
+            test_file_df = pd.read_json(test_file)
             data = {
                 "algo": algo_dir.name,
                 "exp": exp_idx,
                 "test": test_idx,
                 "date": dates,
-                "totalValues": total_values
+                "totalValues": test_file_df["totalValues"],
+                "cashes": test_file_df["cashes"],
+                "numShares": test_file_df["numShares"]
                 }
             tests.append(pd.DataFrame(data=data))
 
@@ -47,29 +49,26 @@ exp_args_df["exp_idx"] = exp_args_df.groupby(by="algo").cumcount()
 exp_args_df = exp_args_df.set_index(["algo","exp_idx"])
 
 # Get Sharpe ratio for all tests
-tests_sharpe = tests_df.groupby(level=["algo", "exp", "test"]).apply(qs.stats.sharpe).rename(columns={"totalValues": "sharpe"})
+tests_sharpe = tests_df["totalValues"].groupby(level=["algo", "exp", "test"]).apply(qs.stats.sharpe).rename("sharpe")
 # Get mean sharpe over the tests for each run
 tests_sharpe_mean = tests_sharpe.groupby(level=["algo", "exp"]).mean()
-# save best run idx to a dict with algo names as keys
-best_exp_idx = pd.Series(dict([item for sublist in tests_sharpe_mean.groupby(level=["algo"]).idxmax().values.tolist() for item in sublist]))
+# save best exp idx to a pandas series
+best_exp_idx = pd.Series(dict(tests_sharpe_mean.groupby(level=["algo"]).idxmax().values.tolist())).rename("best_exp_idx")
 
 # Inside the best experiment, calculate the mean totalValue by date over all tests.
 # for that we have to slice out the best exp out of our overall df
-best_exp = [tests_df.loc[(algo_name, exp_idx, slice(None), slice(None)), slice(None)] for algo_name, exp_idx in best_exp_idx.items()]
-best_exps_df = pd.concat(best_exp).reset_index(level="exp", drop=True).reorder_levels(["algo","date","test"])
+best_exp = [tests_df["totalValues"].loc[(algo_name, exp_idx, slice(None), slice(None))] for algo_name, exp_idx in best_exp_idx.items()]
+best_exp_df = pd.concat(best_exp).reset_index(level="exp", drop=True).reorder_levels(["algo","date","test"])
 
-###
 # Now we getting our data to make graphs and other metrics.
-best_exp_mean_df = best_exps_df.groupby(level=["algo","date"]).mean().unstack(level="algo")
-# Get rid of multilevel column names.
-best_exp_mean_df.columns = best_exp_mean_df.columns.droplevel(None)
+best_exp_mean_df = best_exp_df.groupby(level=["algo","date"]).mean().unstack(level="algo")
 
 ###
 # Creating the best exps_args_df to show it later
 best_exp_args = [exp_args_df.loc[(algo_name, exp_idx), slice(None)] for algo_name, exp_idx in best_exp_idx.items()]
-best_exps_args_df = pd.DataFrame(best_exp_args).reset_index()
-best_exps_args_df[['algo','exp_idx']] = pd.DataFrame(best_exps_args_df["index"].tolist(), index= best_exps_args_df.index)
-best_exps_args_df = best_exps_args_df.drop(columns="index").set_index(["algo","exp_idx"])
+best_exp_args_df = pd.DataFrame(best_exp_args).reset_index()
+best_exp_args_df[['algo','exp_idx']] = pd.DataFrame(best_exp_args_df["index"].tolist(), index= best_exp_args_df.index)
+best_exp_args_df = best_exp_args_df.drop(columns="index").set_index(["algo","exp_idx"])
 
 ###
 ### Create indices series
@@ -101,7 +100,11 @@ etf_df["totalValue"] = etf_df["portf_ret"].add(1).cumprod().mul(1e6)
 
 etf_ser = etf_df["totalValue"]
 etf_ser.name = "ETF"
+
+###
 # Create a DF with all portfolio values
+# This is the DF to work with
+###
 portfolios_df = best_exp_mean_df.join(etf_ser)
 # %%
 # Bar chart race for Portfolio values
@@ -116,52 +119,103 @@ drl_algos = ["A2C", "DDPG", "PPO"]
 
 # Matrix of Mean Sharpes (Experiment times Algorithms)
 mean_sharpes_df = tests_sharpe_mean.unstack(level=["algo"])
-mean_sharpes_df.columns = mean_sharpes_df.columns.droplevel(None)
 # Best experiment sharpe is highlighted
 mean_sharpes_df[drl_algos].style.highlight_max(axis=0)
 
 # %%
 # Showing the variant args of the best experiments
 variant_args = ["cagr", "episodic","num_stacks", "trainsampling"]
-best_exps_args_df[variant_args].loc[drl_algos]
+best_exp_args_df[variant_args].loc[drl_algos]
 # %%
 # Table for evaluation of best experiments for algos and Bench with:
     # Comp. overall Return
     # Comp. annual growth rate
     # Sharpe ratio
     # Volatility (Standard deviation p.a.)
-metrics_df = pd.DataFrame(index=["Return", "Volatility p.a.", "CAGR", "Exp. Return p.a.", "Sharpe ratio"])
+metrics_df = pd.DataFrame(index=["Total return", "CAGR", "Sharpe ratio", "Exp. Return", "Volatility"])
 
-interval = "M"
+interval = "D"
 for column in portfolios_df.columns:
     sharpe = qs.stats.sharpe(qs.utils.to_returns(portfolios_df[column].resample(interval).last()))
     ret = qs.stats.comp(qs.utils.to_returns(portfolios_df[column].resample(interval).last()))
     cagr = qs.stats.cagr(qs.utils.to_returns(portfolios_df[column].resample(interval).last()))
     vol = qs.stats.volatility(qs.utils.to_returns(portfolios_df[column].resample(interval).last()), periods=12)
     exp_ret = qs.stats.expected_return(qs.utils.to_returns(portfolios_df[column].resample(interval).last()), aggregate="M")
-    metrics_df[column] = [ret, vol/100, cagr, exp_ret, sharpe]
+    metrics_df[column] = [ret, cagr, sharpe, exp_ret, vol/100]
 
 # Higlight best algorithm
 metrics_df.style.highlight_max(axis=1)
 # %%
-# Plot a linechart for all portfolios resampled to monthly last value.
-portfolios_df.resample("M").last().plot()
+# TODO: Set Colormap for all plots
+
+# Plot a linechart for all portfolios resampled to monthly mean value.
+portfolios_df[["DDPG","PPO","ETF"]].resample("M").mean().plot(title="Portfoliowerte (Monatsmittel)", xlabel="Datum", ylabel="Euro")
 
 # %%
-# TODO: Investigations
+########### INVESTIGATIONS
+
 #### Why DDPG wasn't effected by the drop in december 2018?
 # The news can tell us, that in december 2018 the US stock market had a historical drop
-# Let's chack this by plotting the reshaped performance of DJIA and EuroStoxx50
-etf_df[["dji", "stoxx50e"]].add(1).cumprod().resample("M").last().plot()
+# Let's check this by plotting the reshaped performance of DJIA and EuroStoxx50
+etf_df[["dji", "stoxx50e"]].add(1).cumprod().resample("W").mean().plot()
 # We can see a drop in DJIA, but also in EuroStoxx50...
-# What stocks did DDPG hold during that period?
+# %%
 # Did it hold more or less cash during the period?
+
+# Get the Cashes of the Algorithms (only DDPG and PPO)
+algos = ["DDPG", "PPO"]
+best_exp_cashes = [tests_df["cashes"].loc[(algo_name, exp_idx, slice(None), slice(None))] for algo_name, exp_idx in best_exp_idx[algos].items()]
+best_exp_cashes_df = pd.concat(best_exp_cashes).reset_index(level="exp", drop=True).reorder_levels(["algo","date","test"])
+best_exp_cashes_df = best_exp_cashes_df.groupby(level=["algo","date"]).mean().unstack(level="algo")
+
+# Plot the Cashes over time resampled to weekly mean value
+best_exp_cashes_df.resample("W").mean().plot(ylim=[0,1000], title="Bargeld im Portfolio (Wochenmittelwert)", xlabel="Datum", ylabel="Euro")
+# %%
+# And for better comparison show the totalValue over time resampled to weekly mean value
+portfolios_df[algos].resample("W").mean().plot(title="Portfoliowerte (Wochenmittel)", ylabel="Euro", xlabel="Datum")
+# %%
+# What stocks did DDPG hold during that period?
+
+# Get numShares in a multilevel DF for DDPG and PPO
+best_exp_numshares = [tests_df["numShares"].loc[(algo_name, exp_idx, slice(None), slice(None))] for algo_name, exp_idx in best_exp_idx[algos].items()]
+best_exp_numshares_df = pd.concat(best_exp_numshares).reset_index(level="exp", drop=True).reorder_levels(["algo","date","test"]).to_frame()
+
+with open(Path.cwd().parent.joinpath("etl") / "stocks.txt") as file:
+    symb_exchange = file.read().splitlines()
+
+stock_symbols_ser = pd.Series(data=symb_exchange, name="symbols", dtype="string")
+best_exp_numshares_df = pd.DataFrame(data=best_exp_numshares_df["numShares"].values.tolist(), columns=stock_symbols_ser.tolist(),index=best_exp_numshares_df.index)
+best_exp_numshares_df = best_exp_numshares_df.unstack(level="test").stack(level=None)
+best_exp_numshares_df.index.names = ["algo", "date", "symbol"]
+best_exp_numshares_df = best_exp_numshares_df.mean(axis=1).round().astype("int").unstack(level="algo")
+# Get closing price and caclulate the stock value in portfolio
+best_exp_numshares_df["close"] = stocksdata_df["close"].to_list()
+best_exp_numshares_df["DDPG"] = best_exp_numshares_df["DDPG"] * best_exp_numshares_df["close"]
+best_exp_numshares_df["PPO"] = best_exp_numshares_df["PPO"] * best_exp_numshares_df["close"]
+best_exp_numshares_df = best_exp_numshares_df.drop(columns="close")
+# %%
+# Bar chart race for seperate symbol values
+# bcr.bar_chart_race(df=best_exp_numshares_df["DDPG"].unstack(), dpi=330,
+#                 filename="best_exp_numshares_race_DDPG.mp4", orientation="v",
+#                 fixed_order=True, period_length=200, filter_column_colors=True,
+#                 fixed_max=True, steps_per_period=1, n_bars=10,
+#                 title="Seperate Stock Values of DDPG over Time")
+# %%
+# The dominant stocks are Airbus, Disney and JPMorgan
+stocksdata_df["close"].unstack()[["AIR","DIS","JPM"]].resample("W").mean().plot()
 
 # %%
 #### How could PPO make such a rise up in the end?
 # There must be one or more stocks that drived this rise.
-# For that one hase to caclulate the percentage of stockvalue on totalValue for each stock.
-# 
+
+# bcr.bar_chart_race(df=best_exp_numshares_df["PPO"].unstack(), dpi=330,
+#                 filename="best_exp_numshares_race_PPO.mp4", orientation="v",
+#                 fixed_order=True, period_length=200, filter_column_colors=True,
+#                 fixed_max=True, steps_per_period=1, n_bars=10,
+#                 title="Seperate Stock Values of PPO over Time")
+# %%
+# The two dominant stocks are Apple and L'oreal
+stocksdata_df["close"].unstack()[["OR","AAPL"]].resample("W").mean().plot()
 
 # %%
 #### What happend with A2C performance?

@@ -29,9 +29,9 @@ def gen_args(baseline: bool) -> list:
         episodic = ["--episodic", ""]
         learn_steps = ["--learn_steps=500000"]
         # num_stack = ["--num_stack=3", "--num_stack=0"]
-        test_eps = ["--test_eps=100"]
+        test_eps = ["--test_eps=25"]
         trainsampling = ["--trainsampling", ""]
-        val_freq = ["--val_freq=2500"]
+        val_freq = ["--val_freq=5000"]
 
         drl = ["--algo=DDPG", "--algo=PPO", "--algo=A2C"]
         lsts = [drl, learn_steps, test_eps, val_freq, episodic, cagr, trainsampling]

@@ -61,10 +61,12 @@ stocks_df.drop(columns=["bv"], inplace=True)
 # %%
 # Because we got Data from different exchanges
 # And they have different trading days, we have to fill the
-# days on which a stock hasn't been traded with 0
+# days on which a stock hasn't been traded with the value before.
+# To know if the stock is tradable we need to
+# have a column indicating it.
 # To do that, we build a helper df with every symbol conjuncted to every date
-# after that we joining the helper df with stocks_df
-# and filling the nan values with 0.
+# after that we joining the helper df with stocks_df.
+# Create a column "tradeable", drop helper column and ffill nan values.
 
 helper_df = pd.DataFrame()
 dates = stocks_df.index.get_level_values(level="date").unique()
@@ -79,11 +81,20 @@ for symbol in symbols:
 
 helper_df = helper_df.set_index(["date","symbol"])
 
+# join and drop helper
 stocks_df = helper_df.join(stocks_df)
-
-stocks_df = stocks_df.fillna(0)
 stocks_df = stocks_df.drop(columns=["helper"])
-stocks_df = stocks_df.replace(np.inf, 0)
+# create tradeable column
+tradeable_helper = pd.Series(data=(~stocks_df["open"].isna())*1,name="tradeable")
+# And insert it on position 2
+stocks_df.insert(loc=2, column="tradeable", value=tradeable_helper)
+
+# Fill open and close with previous values
+stocks_df["open"] = stocks_df["open"].fillna(method="ffill")
+stocks_df["close"] = stocks_df["close"].fillna(method="ffill")
+# and replacing and filling other inf/nan values
+stocks_df = stocks_df.replace([np.inf, -np.inf], np.nan)
+stocks_df = stocks_df.fillna(0)
 # %%
 # Append the timespecific data
 stocks_df["month"] = stocks_df.index.get_level_values(level="date").month

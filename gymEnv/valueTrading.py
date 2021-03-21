@@ -14,9 +14,11 @@ class valueTradingEnv(Env):
     Inherits from gym.Env. It is a stock trading Environment
 
     params:
-        - df (pandas DataFrame): DF with 'date' and 'symbol' set as multilevel index and at least open and closing prices as first and second column. IMPORTANT: open and Closing price always has to be as first and second columns respectively for taking actions and calculating reward.
-        - train (bool): Are we building the Env for training or not? It is used for calculation the daterante in DFs that are equal size of daterange.
+        - df (pandas DataFrame): DF with 'date' and 'symbol' set as multilevel index and at least opening-, closing-prices and 0/1 column if stock is tradeable (1 is tradable) as first, second and third column. IMPORTANT: Open, Close and tradeable always has to be as first, second and third columns respectively for taking actions and calculating reward.
+        - sample (bool): Should the env sample the trading period (episode) out of df in length of yearrange.
         - yearrange (int): How many years will one episode take? DF has to be at least this range.
+        - cagr (boo): Should reward be calculated by CAGR=
+        - episodic (bool): Will the Agent get sparse rewards (only on end of episode).
         ...
     returns:
         A gym.Env object.
@@ -157,14 +159,11 @@ class valueTradingEnv(Env):
                             self.state[1:(1+self.num_symbols)] + \
                             [item for indicator in self.indicators for item in self.data[self.data_dt_filter == self.date][indicator].values.tolist()]
         
-        # Set action of stock where open, close, high and low is 0 to 0
+        # When tradeable is 0 Set action of stock  to 0
         # Because it is not tradable at this state
         for idx in range(len(action)):
-            prc_open = self.new_state[1+self.num_symbols+idx]
-            prc_close = self.new_state[1+self.num_symbols*2+idx]
-            prc_high = self.new_state[1+self.num_symbols*3+idx]
-            prc_low = self.new_state[1+self.num_symbols*4+idx]
-            if prc_open == 0 and prc_close == 0 and prc_high == 0 and prc_low == 0:
+            tradeable = self.new_state[1+self.num_symbols*3+idx]
+            if tradeable == 0:
                 action[idx] = 0
         # return sorted actions indices in sorted order (lowest first)
         argsort_actions = np.argsort(action)

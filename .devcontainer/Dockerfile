@@ -11,7 +11,8 @@ RUN if [ "${INSTALL_NODE}" = "true" ]; then su vscode -c "source /usr/local/shar
 
 # [Optional] Uncomment this section to install additional OS packages.
 RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
-    && apt-get -y install --no-install-recommends cmake libopenmpi-dev python3.7-dev zlib1g-dev libgl1-mesa-glx
+    && apt-get -y install --no-install-recommends cmake libopenmpi-dev python3.7-dev zlib1g-dev libgl1-mesa-glx ffmpeg  \
+    && rm -rf /var/lib/apt/lists/*
 
 # [Optional] If your pip requirements rarely change, uncomment this section to add them to the image.
 COPY requirements.txt /tmp/pip-tmp/

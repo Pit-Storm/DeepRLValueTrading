@@ -29,7 +29,7 @@ parser.add_argument("--fee", action="store", default=0.001, type=float, help="Pe
 parser.add_argument("--learn_steps", action="store", default=15000, type=int, help="Number of timesteps the Agent will learn. Only for DRL algos.")
 parser.add_argument("--num_envs", action="store", default=4, type=int, help="Number of Envs (=Agents) to train with for A2C and PPO. Default is 4")
 parser.add_argument("--result_dir", action="store", default="results", type=str, help="Base folder to store results in. Default: %(default)s")
-parser.add_argument("--num_stacks", action="store", default=5, type=int, help="Number of observations stacked together. Set 0 to deactivate. Default is 5.")
+parser.add_argument("--num_stacks", action="store", default=3, type=int, help="Number of observations stacked together. Set 0 to deactivate. Default is 5.")
 parser.add_argument("--scaling", action="store", default=100, type=int, help="Max possible trades per share per step.")
 parser.add_argument("--seeding", action="store", default=42, type=int, help="Seeding for random number generator. Default is 42.")
 parser.add_argument("--test_eps", action="store", default=100, type=int, help="Takes effect if --deterministic is unset.")

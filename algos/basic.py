@@ -16,12 +16,8 @@ def buyHold(state: list, action_space) -> np.array:
     action = []
     for idx in range(action_space.shape[0]):
         price = state[1+action_space.shape[0]+idx]
-        # We need this to avoid division by zero for stocks not tradable at the given state.
-        if price == 0:
-            num = 0
-        else:
-            num = (investing // price) / config.ACTION_SCALING
-            num = num if num <= 1 else 1
+        num = (investing // price) / config.ACTION_SCALING
+        num = num if num <= 1 else 1
         action.append(num)
         
     return np.array(action)

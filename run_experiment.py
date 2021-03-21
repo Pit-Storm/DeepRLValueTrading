@@ -28,13 +28,13 @@ def gen_args(baseline: bool) -> list:
         cagr = ["--cagr", ""]
         episodic = ["--episodic", ""]
         learn_steps = ["--learn_steps=500000"]
-        num_stack = ["--num_stack=3", "--num_stack=0"]
-        test_eps = ["--test_eps=25"]
+        # num_stack = ["--num_stack=3", "--num_stack=0"]
+        test_eps = ["--test_eps=100"]
         trainsampling = ["--trainsampling", ""]
         val_freq = ["--val_freq=2500"]
 
-        drl = ["--algo=DDPG", "--algo=A2C", "--algo=PPO"]
-        lsts = [drl, cagr, episodic, learn_steps, num_stack, test_eps, trainsampling, val_freq]
+        drl = ["--algo=DDPG", "--algo=PPO", "--algo=A2C"]
+        lsts = [drl, learn_steps, test_eps, val_freq, episodic, cagr, trainsampling]
     
     params = list(itertools.product(*lsts))
     return params
@@ -42,7 +42,7 @@ def gen_args(baseline: bool) -> list:
 if __name__ == "__main__":
     # Set baseline parameter of gen_args to False to run the actual experiment
     # If it is true you generate data for baseline comparison
-    param_lists = gen_args(baseline = True)
+    param_lists = gen_args(baseline = False)
     param_strings = [" ".join(lst) for lst in param_lists]
     cmd_strings = ["python main.py " + item for item in param_strings]
     

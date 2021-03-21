@@ -3,6 +3,7 @@ import sys
 sys.path.append("..")
 from data import handling as dth
 import pandas as pd
+import numpy as np
 from pathlib import Path
 %matplotlib inline
 import quantstats as qs
@@ -16,6 +17,9 @@ stocksdata_fp = Path.cwd().parent / "data" / "stocksdata_all.csv"
 stocksdata_all_df = dth.load_data(stocksdata_fp)
 *_, stocksdata_df = dth.train_val_test_split(stocksdata_all_df)
 dates = stocksdata_df.index.get_level_values(level="date").unique().tolist()
+symbols = stocksdata_df.index.get_level_values(level="symbol").unique().tolist()
+stockprices_ser = stocksdata_df["close"].copy()
+
 ###
 # Generate Multiindex DF for all test results over all experiments over all algos
 results_dir = Path.cwd().parent / "results"
@@ -30,17 +34,23 @@ for algo_dir in algo_dirs:
         test_files = [test_file for test_file in exp_dir.rglob("env_info/test/*.json") if test_file.is_file()]
         for test_idx, test_file in enumerate(test_files):
             test_file_df = pd.read_json(test_file)
+            ### Fix for 0 in stock price
+            # Generate sharesvalues for every test over every exp
+            # Add cashes and sharesvalues for every test over every exp
+            numshares_ser = pd.DataFrame(data=test_file_df["numShares"].values.tolist(),index=dates,columns=symbols).rename_axis(columns="symbol",index="date").stack()
+            sumSharesValues_ser = (numshares_ser*stockprices_ser).groupby(by="date").sum()
             data = {
                 "algo": algo_dir.name,
                 "exp": exp_idx,
                 "test": test_idx,
                 "date": dates,
-                "totalValues": test_file_df["totalValues"],
+                "totalValues": sumSharesValues_ser.reset_index(drop=True).add(test_file_df["cashes"]),
                 "cashes": test_file_df["cashes"],
                 "numShares": test_file_df["numShares"]
                 }
             tests.append(pd.DataFrame(data=data))
 
+# %%
 # concatenate all tests to one df
 tests_df = pd.concat(tests).set_index(["algo", "exp", "test", "date"])
 # and all exp_args to one df
@@ -48,6 +58,7 @@ exp_args_df = pd.DataFrame(exp_args)
 exp_args_df["exp_idx"] = exp_args_df.groupby(by="algo").cumcount()
 exp_args_df = exp_args_df.set_index(["algo","exp_idx"])
 
+# %%
 # Get Sharpe ratio for all tests
 tests_sharpe = tests_df["totalValues"].groupby(level=["algo", "exp", "test"]).apply(qs.stats.sharpe).rename("sharpe")
 # Get mean sharpe over the tests for each run
@@ -137,23 +148,29 @@ for column in portfolios_df.columns:
 
 # Higlight best algorithm
 metrics_df.style.highlight_max(axis=1)
+
+###
+# Random is better than ETF?
+# This is because of the survivor bias.
+# We choosed only stocks that lived from 2000 to end 2019
+# but the ETF contains loosers.
+
 # %%
-show_portfolios = ["PPO","DDPG","BUYHOLD","ETF","A2C","RANDOM"]
+show_portfolios = ["PPO","A2C","DDPG","BUYHOLD","RANDOM","ETF"]
 # ColorBlind/friendly colormap from https://gist.github.com/thriveth/8560036
 colors =    ['#377eb8', '#ff7f00', '#4daf4a',
             '#f781bf', '#a65628', '#984ea3',
             '#999999', '#e41a1c', '#dede00']
 
 # Plot a linechart for all portfolios resampled to monthly mean value.
-portfolios_df[show_portfolios].resample("W").mean().plot(title="Total portfolio value (Weekly mean)", xlabel="Date", ylabel="Total Value", color=colors)
-
+portfolios_df[show_portfolios].plot(title="Total portfolio value", xlabel="Date", ylabel="Total Value", color=colors)
 # %%
 # Bar chart race for Portfolio values
-# bcr.bar_chart_race(df=portfolios_df.resample("W").mean(), dpi=330, cmap=colors,
-#                 filename="best_exp_mean_totalValues_race.mp4", orientation="v",
-#                 fixed_order=True, period_length=1000, interpolate_period=True,
-#                 fixed_max=True, steps_per_period=7,
-#                 title="Portfolio Values over Time")
+bcr.bar_chart_race(df=portfolios_df.resample("2W").mean(), dpi=330, cmap=colors,
+                filename="best_exp_mean_totalValues_race.mp4", orientation="v",
+                fixed_order=True, period_length=1000, interpolate_period=True,
+                fixed_max=True, steps_per_period=7,
+                title="Portfolio Values over Time")
 
 # %%
 ########### INVESTIGATIONS
@@ -167,16 +184,16 @@ etf_df[["dji", "stoxx50e"]].add(1).cumprod().resample("W").mean().plot()
 # Did it hold more or less cash during the period?
 
 # Get the Cashes of the Algorithms (only DDPG and PPO)
-algos = ["PPO","DDPG"]
+algos = ["PPO","A2C","DDPG"]
 best_exp_cashes = [tests_df["cashes"].loc[(algo_name, exp_idx, slice(None), slice(None))] for algo_name, exp_idx in best_exp_idx[algos].items()]
 best_exp_cashes_df = pd.concat(best_exp_cashes).reset_index(level="exp", drop=True).reorder_levels(["algo","date","test"])
 best_exp_cashes_df = best_exp_cashes_df.groupby(level=["algo","date"]).mean().unstack(level="algo")
 
 # Plot the Cashes over time resampled to weekly mean value
-best_exp_cashes_df[algos].resample("W").mean().plot(ylim=[0,1000], title="Portfolio Cash (Weekly mean)", xlabel="Date", ylabel="Total Cash", color=colors)
+best_exp_cashes_df[algos].resample("M").mean().plot(ylim=[0,1100], title="Portfolio Cash (monthly mean", xlabel="Date", ylabel="Total Cash", color=colors)
 # %%
 # And for better comparison show the totalValue over time resampled to weekly mean value
-portfolios_df[algos].resample("W").mean().plot(title="Total portfolio value (Weekly mean)", ylabel="Total Value", xlabel="Date", color=colors)
+portfolios_df[algos].resample("M").mean().plot(title="Total portfolio value (monthly mean)", ylabel="Total Value", xlabel="Date", color=colors)
 # %%
 # What stocks did DDPG hold during that period?
 
@@ -184,7 +201,7 @@ portfolios_df[algos].resample("W").mean().plot(title="Total portfolio value (Wee
 best_exp_numshares = [tests_df["numShares"].loc[(algo_name, exp_idx, slice(None), slice(None))] for algo_name, exp_idx in best_exp_idx[algos].items()]
 best_exp_numshares_df = pd.concat(best_exp_numshares).reset_index(level="exp", drop=True).reorder_levels(["algo","date","test"]).to_frame()
 # explode list fields to columns
-best_exp_numshares_df = pd.DataFrame(data=best_exp_numshares_df["numShares"].values.tolist(), columns=stocksdata_df.index.get_level_values(level="symbol").unique().tolist(),index=best_exp_numshares_df.index)
+best_exp_numshares_df = pd.DataFrame(data=best_exp_numshares_df["numShares"].values.tolist(), columns=stockprices_ser.index.get_level_values(level="symbol").unique().tolist(),index=best_exp_numshares_df.index)
 # swap axis of test (index) and algo (column)
 best_exp_numshares_df = best_exp_numshares_df.unstack(level="test").stack(level=None)
 # reorder index levels
@@ -195,42 +212,73 @@ best_exp_numshares_df = best_exp_numshares_df.mean(axis=1).round().astype("int")
 best_exp_sharesvalues_df = best_exp_numshares_df.copy()
 
 # Get closing price and caclulate the stock value in portfolio
-best_exp_sharesvalues_df = best_exp_sharesvalues_df.join(stocksdata_df["close"])
-best_exp_sharesvalues_df["DDPG"] = best_exp_sharesvalues_df["DDPG"] * best_exp_sharesvalues_df["close"]
+stockprices_ser.name = "close"
+best_exp_sharesvalues_df = best_exp_sharesvalues_df.join(stockprices_ser)
 best_exp_sharesvalues_df["PPO"] = best_exp_sharesvalues_df["PPO"] * best_exp_sharesvalues_df["close"]
+best_exp_sharesvalues_df["A2C"] = best_exp_sharesvalues_df["A2C"] * best_exp_sharesvalues_df["close"]
+best_exp_sharesvalues_df["DDPG"] = best_exp_sharesvalues_df["DDPG"] * best_exp_sharesvalues_df["close"]
 best_exp_sharesvalues_df = best_exp_sharesvalues_df.drop(columns="close")
 # %%
 # Bar chart race for seperate symbol values
-# bcr.bar_chart_race(df=best_exp_sharesvalues_df["DDPG"].unstack().resample("W").mean(), dpi=330,
-#                 filename="best_exp_numshares_race_DDPG.mp4", orientation="v", interpolate_period=True,
-#                 fixed_order=True, period_length=1000, filter_column_colors=True,
-#                 fixed_max=True, steps_per_period=7, n_bars=10, cmap=colors,
-#                 title="Seperate Stock Values of DDPG over Time")
+bcr.bar_chart_race(df=best_exp_sharesvalues_df["DDPG"].unstack("symbol").resample("2W").mean(), dpi=330,
+                filename="best_exp_sharesvalues_race_DDPG.mp4", orientation="v", interpolate_period=True,
+                fixed_order=True, period_length=1000, filter_column_colors=True,
+                fixed_max=True, steps_per_period=7, n_bars=10, cmap=colors,
+                title="Seperate Stock Values of DDPG over Time")
 # %%
+bcr.bar_chart_race(df=best_exp_numshares_df["DDPG"].unstack("symbol").resample("2W").mean(), dpi=330,
+                filename="best_exp_numshares_race_PPO.mp4", orientation="v", interpolate_period=True,
+                fixed_order=True, period_length=1000, filter_column_colors=True,
+                fixed_max=True, steps_per_period=7, n_bars=10, cmap=colors,
+                title="Seperate Stock numbers of DDPG over Time")
+
+# %%
+# TODO: Check fixed dominant stocks.
 # The dominant stocks are...
 dominant_ddpg = ["CSCO","MSFT","IBE","MRK","AD"]
-stocksdata_df["close"].unstack()[dominant_ddpg].resample("W").mean().plot(title="Dominant Stocks of DDPG (Weekly mean)", xlabel="Date", ylabel="Stock Price", color=colors)
+stockprices_ser.unstack("symbol")[dominant_ddpg].resample("2W").mean().plot(title="Dominant Stocks of DDPG (Two weekly mean)", xlabel="Date", ylabel="Stock Price", color=colors)
 
 # %%
 #### How could PPO make such a rise up in the end?
 # There must be one or more stocks that drived this rise.
 
-# bcr.bar_chart_race(df=best_exp_sharesvalues_df["PPO"].unstack().resample("W").mean(), dpi=330,
-#                 filename="best_exp_numshares_race_PPO.mp4", orientation="v", interpolate_period=True,
-#                 fixed_order=True, period_length=1000, filter_column_colors=True,
-#                 fixed_max=True, steps_per_period=7, n_bars=10, cmap=colors,
-#                 title="Seperate Stock Values of PPO over Time")
+bcr.bar_chart_race(df=best_exp_sharesvalues_df["PPO"].unstack("symbol").resample("2W").mean(), dpi=330,
+                filename="best_exp_sharesvalues_race_PPO.mp4", orientation="v", interpolate_period=True,
+                fixed_order=True, period_length=1000, filter_column_colors=True,
+                fixed_max=True, steps_per_period=7, n_bars=10, cmap=colors,
+                title="Seperate Stock Values of PPO over Time")
 # %%
+bcr.bar_chart_race(df=best_exp_numshares_df["PPO"].unstack("symbol").resample("2W").mean(), dpi=330,
+                filename="best_exp_numshares_race_PPO.mp4", orientation="v", interpolate_period=True,
+                fixed_order=True, period_length=1000, filter_column_colors=True,
+                fixed_max=True, steps_per_period=7, n_bars=10, cmap=colors,
+                title="Seperate Stock numbers of PPO over Time")
+
+# %%
+# TODO: Check fixed dominant stocks,
 # The two dominant stocks are...
-dominant_ppo = ["AAPL","CS","AD"]
-stocksdata_df["close"].unstack()[dominant_ppo].resample("W").mean().plot(title="Dominant Stocks of PPO (Weekly mean", ylabel="Stock Price", xlabel="Date", color=colors)
+dominant_ppo = ["AAPL","AD"]
+stockprices_ser.unstack("symbol")[dominant_ppo].resample("2W").mean().plot(title="Dominant Stocks of PPO (Two weekly mean)", ylabel="Stock Price", xlabel="Date", color=colors)
 
 # %%
 #### What happend with A2C performance?
-# Theory: It is not fully trained or didn't converge.
-# Reason could be the relative bad sample efficiency of A2C
-# Another theory could be, that A2C learned to reduce variance/Volatility.
-# If you reduce volatility in your portfolio, you avoid losses.
-# But in addition you avoid wins. The reason fort hat is, because standard deviation swings to both sides. Up and down.
+bcr.bar_chart_race(df=best_exp_sharesvalues_df["A2C"].unstack("symbol").resample("2W").mean(), dpi=330,
+                filename="best_exp_sharesvalues_race_A2C.mp4", orientation="v", interpolate_period=True,
+                fixed_order=True, period_length=1000, filter_column_colors=True,
+                fixed_max=True, steps_per_period=7, n_bars=10, cmap=colors,
+                title="Seperate Stock Values of A2C over Time")
+# %%
+# %%
+bcr.bar_chart_race(df=best_exp_numshares_df["A2C"].unstack("symbol").resample("2W").mean(), dpi=330,
+                filename="best_exp_numshares_race_A2C.mp4", orientation="v", interpolate_period=True,
+                fixed_order=True, period_length=1000, filter_column_colors=True,
+                fixed_max=True, steps_per_period=7, n_bars=10, cmap=colors,
+                title="Seperate Stock Values of A2C over Time")
+
+# %%
+# TODO: Check for A2C
+dominant_a2c = [""]
+stockprices_ser.unstack("symbol")[dominant_a2c].resample("2W").mean().plot(title="Dominant Stocks of A2C (Two weekly mean)", xlabel="Date", ylabel="Stock Price", color=colors)
+
 
 # %%

@@ -49,7 +49,7 @@ exp_args_df["exp_idx"] = exp_args_df.groupby(by="algo").cumcount()
 exp_args_df = exp_args_df.set_index(["algo","exp_idx"])
 
 # Get Sharpe ratio for all tests
-tests_sharpe = tests_df["totalValues"].groupby(level=["algo", "exp", "test"]).apply(qs.stats.sharpe).rename("sharpe")
+tests_sharpe = tests_df["totalValues"].loc[(slice(None),slice(None),slice(None),slice("2016-01-03","2019-12-30"))].groupby(level=["algo", "exp", "test"]).apply(qs.stats.sharpe).rename("Sharpe")
 # Get mean sharpe over the tests for each run
 tests_sharpe_mean = tests_sharpe.groupby(level=["algo", "exp"]).mean()
 # save best exp idx to a pandas series
@@ -57,7 +57,7 @@ best_exp_idx = pd.Series(dict(tests_sharpe_mean.groupby(level=["algo"]).idxmax()
 
 # Inside the best experiment, calculate the mean totalValue by date over all tests.
 # for that we have to slice out the best exp out of our overall df
-best_exp = [tests_df["totalValues"].loc[(algo_name, exp_idx, slice(None), slice(None))] for algo_name, exp_idx in best_exp_idx.items()]
+best_exp = [tests_df["totalValues"].loc[(algo_name, exp_idx, slice(None), slice("2016-01-03","2019-12-30"))] for algo_name, exp_idx in best_exp_idx.items()]
 best_exp_df = pd.concat(best_exp).reset_index(level="exp", drop=True).reorder_levels(["algo","date","test"])
 
 # Now we getting our data to make graphs and other metrics.
@@ -98,7 +98,7 @@ etf_df["portf_ret"] = etf_df["dji"]*(1-(36/63)) + etf_df["stoxx50e"]*(36/63)
 # Calculate the portfolio value
 etf_df["totalValue"] = etf_df["portf_ret"].add(1).cumprod().mul(1e6)
 
-etf_ser = etf_df["totalValue"]
+etf_ser = etf_df["totalValue"].loc[slice("2016-01-03","2019-12-30")]
 etf_ser.name = "ETF"
 
 ###
@@ -126,13 +126,12 @@ best_exp_args_df[variant_args].loc[drl_algos]
     # Volatility (Standard deviation p.a.)
 metrics_df = pd.DataFrame(index=["Total return", "CAGR", "Sharpe ratio", "Exp. Return", "Volatility"])
 
-interval = "D"
 for column in portfolios_df.columns:
-    sharpe = qs.stats.sharpe(qs.utils.to_returns(portfolios_df[column].resample(interval).last()))
-    ret = qs.stats.comp(qs.utils.to_returns(portfolios_df[column].resample(interval).last()))
-    cagr = qs.stats.cagr(qs.utils.to_returns(portfolios_df[column].resample(interval).last()))
-    vol = qs.stats.volatility(qs.utils.to_returns(portfolios_df[column].resample(interval).last()), periods=12)
-    exp_ret = qs.stats.expected_return(qs.utils.to_returns(portfolios_df[column].resample(interval).last()), aggregate="M")
+    sharpe = qs.stats.sharpe(qs.utils.to_returns(portfolios_df[column]))
+    ret = qs.stats.comp(qs.utils.to_returns(portfolios_df[column]))
+    cagr = qs.stats.cagr(qs.utils.to_returns(portfolios_df[column]))
+    vol = qs.stats.volatility(qs.utils.to_returns(portfolios_df[column]), periods=12)
+    exp_ret = qs.stats.expected_return(qs.utils.to_returns(portfolios_df[column]), aggregate="M")
     metrics_df[column] = [ret, cagr, sharpe, exp_ret, vol/100]
 
 # Higlight best algorithm

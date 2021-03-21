@@ -90,8 +90,8 @@ tradeable_helper = pd.Series(data=(~stocks_df["open"].isna())*1,name="tradeable"
 stocks_df.insert(loc=2, column="tradeable", value=tradeable_helper)
 
 # Fill open and close with previous values
-stocks_df["open"] = stocks_df["open"].fillna(method="ffill")
-stocks_df["close"] = stocks_df["close"].fillna(method="ffill")
+stocks_df["open"] = stocks_df["open"].unstack("symbol").sort_index().fillna(method="ffill").stack()
+stocks_df["close"] = stocks_df["close"].unstack("symbol").sort_index().fillna(method="ffill").stack()
 # and replacing and filling other inf/nan values
 stocks_df = stocks_df.replace([np.inf, -np.inf], np.nan)
 stocks_df = stocks_df.fillna(0)

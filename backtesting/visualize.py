@@ -145,10 +145,11 @@ colors =    ['#377eb8', '#ff7f00', '#4daf4a',
             '#999999', '#e41a1c', '#dede00']
 
 # Plot a linechart for all portfolios resampled to monthly mean value.
-portfolios_df[show_portfolios].resample("2W").last().plot(title="Total portfolio value (Two-Weekly last)", xlabel="Date", ylabel="Total Value", color=colors)
+portfolios_df[show_portfolios].resample("W").mean().plot(title="Total portfolio value (Weekly mean)", xlabel="Date", ylabel="Total Value", color=colors)
+
 # %%
 # Bar chart race for Portfolio values
-# bcr.bar_chart_race(df=portfolios_df.resample("2W").last(), dpi=330, cmap=colors,
+# bcr.bar_chart_race(df=portfolios_df.resample("W").mean(), dpi=330, cmap=colors,
 #                 filename="best_exp_mean_totalValues_race.mp4", orientation="v",
 #                 fixed_order=True, period_length=1000, interpolate_period=True,
 #                 fixed_max=True, steps_per_period=7,
@@ -172,10 +173,10 @@ best_exp_cashes_df = pd.concat(best_exp_cashes).reset_index(level="exp", drop=Tr
 best_exp_cashes_df = best_exp_cashes_df.groupby(level=["algo","date"]).mean().unstack(level="algo")
 
 # Plot the Cashes over time resampled to weekly mean value
-best_exp_cashes_df[algos].resample("2W").last().plot(ylim=[0,1000], title="Portfolio Cash (Two Weekly Last)", xlabel="Date", ylabel="Total Cash", color=colors)
+best_exp_cashes_df[algos].resample("W").mean().plot(ylim=[0,1000], title="Portfolio Cash (Weekly mean)", xlabel="Date", ylabel="Total Cash", color=colors)
 # %%
 # And for better comparison show the totalValue over time resampled to weekly mean value
-portfolios_df[algos].resample("2W").last().plot(title="Total portfolio value (Two Weekly last)", ylabel="Total Value", xlabel="Date", color=colors)
+portfolios_df[algos].resample("W").mean().plot(title="Total portfolio value (Weekly mean)", ylabel="Total Value", xlabel="Date", color=colors)
 # %%
 # What stocks did DDPG hold during that period?
 
@@ -200,7 +201,7 @@ best_exp_sharesvalues_df["PPO"] = best_exp_sharesvalues_df["PPO"] * best_exp_sha
 best_exp_sharesvalues_df = best_exp_sharesvalues_df.drop(columns="close")
 # %%
 # Bar chart race for seperate symbol values
-# bcr.bar_chart_race(df=best_exp_sharesvalues_df["DDPG"].unstack().resample("2W").last(), dpi=330,
+# bcr.bar_chart_race(df=best_exp_sharesvalues_df["DDPG"].unstack().resample("W").mean(), dpi=330,
 #                 filename="best_exp_numshares_race_DDPG.mp4", orientation="v", interpolate_period=True,
 #                 fixed_order=True, period_length=1000, filter_column_colors=True,
 #                 fixed_max=True, steps_per_period=7, n_bars=10, cmap=colors,
@@ -208,13 +209,13 @@ best_exp_sharesvalues_df = best_exp_sharesvalues_df.drop(columns="close")
 # %%
 # The dominant stocks are...
 dominant_ddpg = ["CSCO","MSFT","IBE","MRK","AD"]
-stocksdata_df["close"].unstack()[dominant_ddpg].resample("2W").last().plot(title="Dominant Stocks of DDPG (Two weekly last)", xlabel="Date", ylabel="Stock Price", color=colors)
+stocksdata_df["close"].unstack()[dominant_ddpg].resample("W").mean().plot(title="Dominant Stocks of DDPG (Weekly mean)", xlabel="Date", ylabel="Stock Price", color=colors)
 
 # %%
 #### How could PPO make such a rise up in the end?
 # There must be one or more stocks that drived this rise.
 
-# bcr.bar_chart_race(df=best_exp_sharesvalues_df["PPO"].unstack().resample("2W").last(), dpi=330,
+# bcr.bar_chart_race(df=best_exp_sharesvalues_df["PPO"].unstack().resample("W").mean(), dpi=330,
 #                 filename="best_exp_numshares_race_PPO.mp4", orientation="v", interpolate_period=True,
 #                 fixed_order=True, period_length=1000, filter_column_colors=True,
 #                 fixed_max=True, steps_per_period=7, n_bars=10, cmap=colors,
@@ -222,7 +223,7 @@ stocksdata_df["close"].unstack()[dominant_ddpg].resample("2W").last().plot(title
 # %%
 # The two dominant stocks are...
 dominant_ppo = ["AAPL","CS","AD"]
-stocksdata_df["close"].unstack()[dominant_ppo].resample("2W").last().plot(title="Dominant Stocks of PPO (Two weekly last", ylabel="Stock Price", xlabel="Date", color=colors)
+stocksdata_df["close"].unstack()[dominant_ppo].resample("W").mean().plot(title="Dominant Stocks of PPO (Weekly mean", ylabel="Stock Price", xlabel="Date", color=colors)
 
 # %%
 #### What happend with A2C performance?

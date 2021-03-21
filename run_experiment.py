@@ -25,16 +25,16 @@ def gen_args(baseline: bool) -> list:
         baseline = ["--algo=random","--algo=buyhold"]
         lsts = [baseline, ["--episodic"], ["--test_eps=100"]]
     else:
-        cagr = ["--cagr", ""]
-        episodic = ["--episodic", ""]
+        # cagr = ["--cagr", ""]
+        # episodic = ["--episodic", ""]
         learn_steps = ["--learn_steps=500000"]
-        # num_stack = ["--num_stack=3", "--num_stack=0"]
+        num_stack = ["--num_stack=0", ""]
         test_eps = ["--test_eps=25"]
         trainsampling = ["--trainsampling", ""]
-        val_freq = ["--val_freq=5000"]
+        val_freq = ["--val_freq=10000"]
 
         drl = ["--algo=DDPG", "--algo=PPO", "--algo=A2C"]
-        lsts = [drl, learn_steps, test_eps, val_freq, episodic, cagr, trainsampling]
+        lsts = [drl, learn_steps, test_eps, val_freq, num_stack, trainsampling]
     
     params = list(itertools.product(*lsts))
     return params

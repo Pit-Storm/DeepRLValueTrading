@@ -34,7 +34,7 @@ def gen_args(baseline: bool) -> list:
         val_freq = ["--val_freq=5000"]
 
         drl = ["--algo=DDPG", "--algo=PPO", "--algo=A2C"]
-        lsts = [drl, learn_steps, test_eps, val_freq, num_stack, trainsampling]
+        lsts = [drl, learn_steps, test_eps, val_freq, num_stack, trainsampling, cagr]
     
     params = list(itertools.product(*lsts))
     return params

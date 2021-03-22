@@ -12,6 +12,12 @@ import seaborn as sns
 # extend pandas functionality with metrics, etc.
 qs.extend_pandas()
 # %%
+
+######
+######
+# Dont forget to set results_dir
+# and line 53 or 54 to the data (bug or fix)
+
 # Get tested dates out of stocksdata
 stocksdata_fp = Path.cwd().parent / "data" / "stocksdata_all.csv"
 stocksdata_all_df = dth.load_data(stocksdata_fp)
@@ -22,7 +28,7 @@ stockprices_ser = stocksdata_df["close"].copy()
 
 ###
 # Generate Multiindex DF for all test results over all experiments over all algos
-results_dir = Path.cwd().parent / "results"
+results_dir = Path.cwd().parent / "results_holiday_fix"
 tests = []
 exp_args = []
 
@@ -44,7 +50,8 @@ for algo_dir in algo_dirs:
                 "exp": exp_idx,
                 "test": test_idx,
                 "date": dates,
-                "totalValues": sumSharesValues_ser.reset_index(drop=True).add(test_file_df["cashes"]),
+                # "totalValues": sumSharesValues_ser.reset_index(drop=True).add(test_file_df["cashes"]),
+                "totalValues": test_file_df["totalValues"],
                 "cashes": test_file_df["cashes"],
                 "numShares": test_file_df["numShares"]
                 }

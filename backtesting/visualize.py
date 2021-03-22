@@ -50,7 +50,6 @@ for algo_dir in algo_dirs:
                 }
             tests.append(pd.DataFrame(data=data))
 
-# %%
 # concatenate all tests to one df
 tests_df = pd.concat(tests).set_index(["algo", "exp", "test", "date"])
 # and all exp_args to one df
@@ -58,7 +57,6 @@ exp_args_df = pd.DataFrame(exp_args)
 exp_args_df["exp_idx"] = exp_args_df.groupby(by="algo").cumcount()
 exp_args_df = exp_args_df.set_index(["algo","exp_idx"])
 
-# %%
 # Get Sharpe ratio for all tests
 tests_sharpe = tests_df["totalValues"].groupby(level=["algo", "exp", "test"]).apply(qs.stats.sharpe).rename("sharpe")
 # Get mean sharpe over the tests for each run
@@ -117,13 +115,18 @@ etf_ser.name = "ETF"
 # This is the DF to work with
 ###
 portfolios_df = best_exp_mean_df.join(etf_ser)
+
 # %%
-drl_algos = ["A2C", "DDPG", "PPO"]
+###
+# Now coming to actual plotting
+drl_algos = ["PPO", "A2C", "DDPG"]
 
 # Matrix of Mean Sharpes (Experiment times Algorithms)
 mean_sharpes_df = tests_sharpe_mean.unstack(level=["algo"])
-# Best experiment sharpe is highlighted
-mean_sharpes_df[drl_algos].style.highlight_max(axis=0)
+# Color Gradient
+color_gradient = sns.light_palette("green", as_cmap=True)
+# Apply color gradient to columns of mean_sharpes_df
+mean_sharpes_df[drl_algos].T.style.background_gradient(cmap=color_gradient, axis=1).set_precision(2)
 
 # %%
 # Showing the variant args of the best experiments
@@ -135,19 +138,17 @@ best_exp_args_df[variant_args].loc[drl_algos]
     # Comp. annual growth rate
     # Sharpe ratio
     # Volatility (Standard deviation p.a.)
-metrics_df = pd.DataFrame(index=["Total return", "CAGR", "Sharpe ratio", "Exp. Return", "Volatility"])
+metrics_df = pd.DataFrame(index=["Total return (%)", "CAGR (%)", "Sharpe ratio", "Std. Dev. (%)"])
 
-interval = "D"
 for column in portfolios_df.columns:
-    sharpe = qs.stats.sharpe(qs.utils.to_returns(portfolios_df[column].resample(interval).last()))
-    ret = qs.stats.comp(qs.utils.to_returns(portfolios_df[column].resample(interval).last()))
-    cagr = qs.stats.cagr(qs.utils.to_returns(portfolios_df[column].resample(interval).last()))
-    vol = qs.stats.volatility(qs.utils.to_returns(portfolios_df[column].resample(interval).last()), periods=12)
-    exp_ret = qs.stats.expected_return(qs.utils.to_returns(portfolios_df[column].resample(interval).last()), aggregate="M")
-    metrics_df[column] = [ret, cagr, sharpe, exp_ret, vol/100]
+    sharpe = qs.stats.sharpe(qs.utils.to_returns(portfolios_df[column]))
+    ret = qs.stats.comp(qs.utils.to_returns(portfolios_df[column]))
+    cagr = qs.stats.cagr(qs.utils.to_returns(portfolios_df[column]))
+    vol = qs.stats.volatility(qs.utils.to_returns(portfolios_df[column]), annualize=False)
+    metrics_df[column] = [ret*100, cagr*100, sharpe, vol*100]
 
 # Higlight best algorithm
-metrics_df.style.highlight_max(axis=1)
+metrics_df.style.background_gradient(cmap=color_gradient, axis=1).set_precision(3)
 
 ###
 # Random is better than ETF?
@@ -166,11 +167,11 @@ colors =    ['#377eb8', '#ff7f00', '#4daf4a',
 portfolios_df[show_portfolios].plot(title="Total portfolio value", xlabel="Date", ylabel="Total Value", color=colors)
 # %%
 # Bar chart race for Portfolio values
-bcr.bar_chart_race(df=portfolios_df.resample("2W").mean(), dpi=330, cmap=colors,
-                filename="best_exp_mean_totalValues_race.mp4", orientation="v",
-                fixed_order=True, period_length=1000, interpolate_period=True,
-                fixed_max=True, steps_per_period=7,
-                title="Portfolio Values over Time")
+# bcr.bar_chart_race(df=portfolios_df.resample("2W").mean(), dpi=330, cmap=colors,
+#                 filename="best_exp_mean_totalValues_race.mp4", orientation="v",
+#                 fixed_order=True, period_length=1000, interpolate_period=True,
+#                 fixed_max=True, steps_per_period=7,
+#                 title="Portfolio Values over Time")
 
 # %%
 ########### INVESTIGATIONS
@@ -178,7 +179,7 @@ bcr.bar_chart_race(df=portfolios_df.resample("2W").mean(), dpi=330, cmap=colors,
 #### Why DDPG wasn't effected by the drop in december 2018?
 # The news can tell us, that in december 2018 the US stock market had a historical drop
 # Let's check this by plotting the reshaped performance of DJIA and EuroStoxx50
-etf_df[["dji", "stoxx50e"]].add(1).cumprod().resample("W").mean().plot()
+etf_df[["dji", "stoxx50e"]].add(1).cumprod().plot(title="Trend of Indices", ylabel="Cum. Percentage", xlabel="Date")
 # We can see a drop in DJIA, but also in EuroStoxx50...
 # %%
 # Did it hold more or less cash during the period?
@@ -220,65 +221,82 @@ best_exp_sharesvalues_df["DDPG"] = best_exp_sharesvalues_df["DDPG"] * best_exp_s
 best_exp_sharesvalues_df = best_exp_sharesvalues_df.drop(columns="close")
 # %%
 # Bar chart race for seperate symbol values
-bcr.bar_chart_race(df=best_exp_sharesvalues_df["DDPG"].unstack("symbol").resample("2W").mean(), dpi=330,
-                filename="best_exp_sharesvalues_race_DDPG.mp4", orientation="v", interpolate_period=True,
-                fixed_order=True, period_length=1000, filter_column_colors=True,
-                fixed_max=True, steps_per_period=7, n_bars=10, cmap=colors,
-                title="Seperate Stock Values of DDPG over Time")
+# bcr.bar_chart_race(df=best_exp_sharesvalues_df["DDPG"].unstack("symbol").resample("2W").mean(), dpi=330,
+#                 filename="best_exp_sharesvalues_race_DDPG.mp4", orientation="v", interpolate_period=True,
+#                 fixed_order=True, period_length=1000, filter_column_colors=True,
+#                 fixed_max=True, steps_per_period=7, n_bars=10, cmap=colors,
+#                 title="Seperate Stock Values of DDPG over Time")
 # %%
-bcr.bar_chart_race(df=best_exp_numshares_df["DDPG"].unstack("symbol").resample("2W").mean(), dpi=330,
-                filename="best_exp_numshares_race_PPO.mp4", orientation="v", interpolate_period=True,
-                fixed_order=True, period_length=1000, filter_column_colors=True,
-                fixed_max=True, steps_per_period=7, n_bars=10, cmap=colors,
-                title="Seperate Stock numbers of DDPG over Time")
+# bcr.bar_chart_race(df=best_exp_numshares_df["DDPG"].unstack("symbol").resample("2W").mean(), dpi=330,
+#                 filename="best_exp_numshares_race_PPO.mp4", orientation="v", interpolate_period=True,
+#                 fixed_order=True, period_length=1000, filter_column_colors=True,
+#                 fixed_max=True, steps_per_period=7, n_bars=10, cmap=colors,
+#                 title="Seperate Stock numbers of DDPG over Time")
 
 # %%
-# TODO: Check fixed dominant stocks.
-# The dominant stocks are...
-dominant_ddpg = ["CSCO","MSFT","IBE","MRK","AD"]
-stockprices_ser.unstack("symbol")[dominant_ddpg].resample("2W").mean().plot(title="Dominant Stocks of DDPG (Two weekly mean)", xlabel="Date", ylabel="Stock Price", color=colors)
+# The dominant stocks...
+# Show the mean of each sharesvalue and plot the 10 largest.
+best_exp_sharesvalues_df["DDPG"].unstack("symbol").mean().nlargest(10).plot(title="Mean sharevalue in DDPG Portfolio", ylabel="Value", xlabel="Symbol", kind="bar",color=colors)
 
 # %%
 #### How could PPO make such a rise up in the end?
 # There must be one or more stocks that drived this rise.
 
-bcr.bar_chart_race(df=best_exp_sharesvalues_df["PPO"].unstack("symbol").resample("2W").mean(), dpi=330,
-                filename="best_exp_sharesvalues_race_PPO.mp4", orientation="v", interpolate_period=True,
-                fixed_order=True, period_length=1000, filter_column_colors=True,
-                fixed_max=True, steps_per_period=7, n_bars=10, cmap=colors,
-                title="Seperate Stock Values of PPO over Time")
-# %%
-bcr.bar_chart_race(df=best_exp_numshares_df["PPO"].unstack("symbol").resample("2W").mean(), dpi=330,
-                filename="best_exp_numshares_race_PPO.mp4", orientation="v", interpolate_period=True,
-                fixed_order=True, period_length=1000, filter_column_colors=True,
-                fixed_max=True, steps_per_period=7, n_bars=10, cmap=colors,
-                title="Seperate Stock numbers of PPO over Time")
+# bcr.bar_chart_race(df=best_exp_sharesvalues_df["PPO"].unstack("symbol").resample("2W").mean(), dpi=330,
+#                 filename="best_exp_sharesvalues_race_PPO.mp4", orientation="v", interpolate_period=True,
+#                 fixed_order=True, period_length=1000, filter_column_colors=True,
+#                 fixed_max=True, steps_per_period=7, n_bars=10, cmap=colors,
+#                 title="Seperate Stock Values of PPO over Time")
+# # %%
+# bcr.bar_chart_race(df=best_exp_numshares_df["PPO"].unstack("symbol").resample("2W").mean(), dpi=330,
+#                 filename="best_exp_numshares_race_PPO.mp4", orientation="v", interpolate_period=True,
+#                 fixed_order=True, period_length=1000, filter_column_colors=True,
+#                 fixed_max=True, steps_per_period=7, n_bars=10, cmap=colors,
+#                 title="Seperate Stock numbers of PPO over Time")
 
 # %%
-# TODO: Check fixed dominant stocks,
-# The two dominant stocks are...
-dominant_ppo = ["AAPL","AD"]
-stockprices_ser.unstack("symbol")[dominant_ppo].resample("2W").mean().plot(title="Dominant Stocks of PPO (Two weekly mean)", ylabel="Stock Price", xlabel="Date", color=colors)
+# The dominant stocks...
+# Show the mean of each sharesvalue and plot the 10 largest.
+best_exp_sharesvalues_df["PPO"].unstack("symbol").mean().nlargest(10).plot(title="Mean sharevalue in PPO Portfolio", ylabel="Value", xlabel="Symbol", kind="bar",color=colors)
 
 # %%
 #### What happend with A2C performance?
-bcr.bar_chart_race(df=best_exp_sharesvalues_df["A2C"].unstack("symbol").resample("2W").mean(), dpi=330,
-                filename="best_exp_sharesvalues_race_A2C.mp4", orientation="v", interpolate_period=True,
-                fixed_order=True, period_length=1000, filter_column_colors=True,
-                fixed_max=True, steps_per_period=7, n_bars=10, cmap=colors,
-                title="Seperate Stock Values of A2C over Time")
-# %%
-# %%
-bcr.bar_chart_race(df=best_exp_numshares_df["A2C"].unstack("symbol").resample("2W").mean(), dpi=330,
-                filename="best_exp_numshares_race_A2C.mp4", orientation="v", interpolate_period=True,
-                fixed_order=True, period_length=1000, filter_column_colors=True,
-                fixed_max=True, steps_per_period=7, n_bars=10, cmap=colors,
-                title="Seperate Stock Values of A2C over Time")
+# bcr.bar_chart_race(df=best_exp_sharesvalues_df["A2C"].unstack("symbol").resample("2W").mean(), dpi=330,
+#                 filename="best_exp_sharesvalues_race_A2C.mp4", orientation="v", interpolate_period=True,
+#                 fixed_order=True, period_length=1000, filter_column_colors=True,
+#                 fixed_max=True, steps_per_period=7, n_bars=10, cmap=colors,
+#                 title="Seperate Stock Values of A2C over Time")
+# # %%
+# # %%
+# bcr.bar_chart_race(df=best_exp_numshares_df["A2C"].unstack("symbol").resample("2W").mean(), dpi=330,
+#                 filename="best_exp_numshares_race_A2C.mp4", orientation="v", interpolate_period=True,
+#                 fixed_order=True, period_length=1000, filter_column_colors=True,
+#                 fixed_max=True, steps_per_period=7, n_bars=10, cmap=colors,
+#                 title="Seperate Stock Values of A2C over Time")
 
 # %%
-# TODO: Check for A2C
-dominant_a2c = [""]
-stockprices_ser.unstack("symbol")[dominant_a2c].resample("2W").mean().plot(title="Dominant Stocks of A2C (Two weekly mean)", xlabel="Date", ylabel="Stock Price", color=colors)
+# The dominant stocks...
+# Show the mean of each sharesvalue and plot the 10 largest.
+best_exp_sharesvalues_df["A2C"].unstack("symbol").mean().nlargest(10).plot(title="Mean sharevalue in A2C Portfolio", ylabel="Value", xlabel="Symbol" ,kind="bar",color=colors)
 
+
+# %%
+# Show the mean percentage of portfolio structur
+with open(Path.cwd().parent / "etl" / "stocks.txt") as file:
+    symb_exchange = file.read().splitlines()
+
+stocks = pd.DataFrame([item.split(".") for item in symb_exchange], columns=["symbol","exchange"]).set_index("symbol")["exchange"].apply(lambda x: "EU" if x != "US" else x)
+
+temp = [pd.Series(data=best_exp_sharesvalues_df[algo].unstack("symbol").mean().nlargest(10), name=algo) for algo in drl_algos]
+exchange_values_mean_df = (pd.DataFrame(data=temp).T.sort_index().rename_axis(index="symbol").fillna(best_exp_sharesvalues_df.unstack("symbol").mean().unstack().T) \
+    .join(stocks).set_index("exchange").sort_index().groupby(by="exchange").sum().T)
+exchange_values_mean_df["Total"] = portfolios_df[drl_algos].mean()
+exchange_values_mean_df["Cash"] = exchange_values_mean_df.apply(lambda x: x["Total"] - (x["EU"]+x["US"]), axis=1)
+exchange_values_mean_df = exchange_values_mean_df[["EU","US","Cash","Total"]]
+for column in exchange_values_mean_df.columns:
+    exchange_values_mean_df[column] = exchange_values_mean_df.apply(lambda x: x[column]/x["Total"], axis=1)
+exchange_values_mean_df = exchange_values_mean_df.drop(columns="Total")
+
+exchange_values_mean_df.plot(title="Mean Portfolio Structur by DRL Algorithm", ylabel="Percentage" ,kind="bar",stacked=True, legend="reverse")
 
 # %%

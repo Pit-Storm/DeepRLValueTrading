@@ -15,8 +15,10 @@ qs.extend_pandas()
 
 ######
 ######
-# Dont forget to set results_dir
-# and line 53 or 54 to the data (bug or fix)
+# This sets results_dir and calc of totalValue in dependence
+# of what model we want (always with fixed data)
+holiday_fix_model = True
+######
 
 # Get tested dates out of stocksdata
 stocksdata_fp = Path.cwd().parent / "data" / "stocksdata_all.csv"
@@ -28,7 +30,10 @@ stockprices_ser = stocksdata_df["close"].copy()
 
 ###
 # Generate Multiindex DF for all test results over all experiments over all algos
-results_dir = Path.cwd().parent / "results_holiday_fix"
+if holiday_fix_model:
+    results_dir = Path.cwd().parent / "results_holiday_fix"
+else:
+    results_dir = Path.cwd().parent / "results"
 tests = []
 exp_args = []
 
@@ -40,18 +45,21 @@ for algo_dir in algo_dirs:
         test_files = [test_file for test_file in exp_dir.rglob("env_info/test/*.json") if test_file.is_file()]
         for test_idx, test_file in enumerate(test_files):
             test_file_df = pd.read_json(test_file)
-            ### Fix for 0 in stock price
-            # Generate sharesvalues for every test over every exp
-            # Add cashes and sharesvalues for every test over every exp
-            numshares_ser = pd.DataFrame(data=test_file_df["numShares"].values.tolist(),index=dates,columns=symbols).rename_axis(columns="symbol",index="date").stack()
-            sumSharesValues_ser = (numshares_ser*stockprices_ser).groupby(by="date").sum()
+            if holiday_fix_model:
+                totalValues_ser = test_file_df["totalValues"]
+            else:
+                ### Fix for 0 in stock price
+                # Generate sharesvalues for every test over every exp
+                # Add cashes and sharesvalues for every test over every exp
+                numshares_ser = pd.DataFrame(data=test_file_df["numShares"].values.tolist(),index=dates,columns=symbols).rename_axis(columns="symbol",index="date").stack()
+                numSharesValues_ser = (numshares_ser*stockprices_ser).groupby(by="date").sum()
+                totalValues_ser = sumSharesValues_ser.reset_index(drop=True).add(test_file_df["cashes"])
             data = {
                 "algo": algo_dir.name,
                 "exp": exp_idx,
                 "test": test_idx,
                 "date": dates,
-                # "totalValues": sumSharesValues_ser.reset_index(drop=True).add(test_file_df["cashes"]),
-                "totalValues": test_file_df["totalValues"],
+                "totalValues": totalValues_ser,
                 "cashes": test_file_df["cashes"],
                 "numShares": test_file_df["numShares"]
                 }
@@ -155,7 +163,8 @@ for column in portfolios_df.columns:
     metrics_df[column] = [ret*100, cagr*100, sharpe, vol*100]
 
 # Higlight best algorithm
-metrics_df.style.background_gradient(cmap=color_gradient, axis=1).set_precision(3)
+show_portfolios = ["PPO","A2C","BUYHOLD","DDPG","RANDOM","ETF"]
+metrics_df[show_portfolios].style.background_gradient(cmap=color_gradient, axis=1).set_precision(3)
 
 ###
 # Random is better than ETF?
@@ -164,7 +173,6 @@ metrics_df.style.background_gradient(cmap=color_gradient, axis=1).set_precision(
 # but the ETF contains loosers.
 
 # %%
-show_portfolios = ["PPO","A2C","DDPG","BUYHOLD","RANDOM","ETF"]
 # ColorBlind/friendly colormap from https://gist.github.com/thriveth/8560036
 colors =    ['#377eb8', '#ff7f00', '#4daf4a',
             '#f781bf', '#a65628', '#984ea3',
@@ -198,10 +206,10 @@ best_exp_cashes_df = pd.concat(best_exp_cashes).reset_index(level="exp", drop=Tr
 best_exp_cashes_df = best_exp_cashes_df.groupby(level=["algo","date"]).mean().unstack(level="algo")
 
 # Plot the Cashes over time resampled to weekly mean value
-best_exp_cashes_df[algos].resample("M").mean().plot(ylim=[0,1100], title="Portfolio Cash (monthly mean", xlabel="Date", ylabel="Total Cash", color=colors)
+best_exp_cashes_df[algos].resample("M").mean().plot(ylim=[0,1100], title="Portfolio Cash (monthly mean", xlabel="Date", ylabel="Total Cash", color=colors[0:2]+[colors[3]])
 # %%
 # And for better comparison show the totalValue over time resampled to weekly mean value
-portfolios_df[algos].resample("M").mean().plot(title="Total portfolio value (monthly mean)", ylabel="Total Value", xlabel="Date", color=colors)
+portfolios_df[algos].resample("M").mean().plot(title="Total portfolio value (monthly mean)", ylabel="Total Value", xlabel="Date", color=colors[0:2]+[colors[3]])
 # %%
 # What stocks did DDPG hold during that period?
 
@@ -227,25 +235,6 @@ best_exp_sharesvalues_df["A2C"] = best_exp_sharesvalues_df["A2C"] * best_exp_sha
 best_exp_sharesvalues_df["DDPG"] = best_exp_sharesvalues_df["DDPG"] * best_exp_sharesvalues_df["close"]
 best_exp_sharesvalues_df = best_exp_sharesvalues_df.drop(columns="close")
 # %%
-# Bar chart race for seperate symbol values
-# bcr.bar_chart_race(df=best_exp_sharesvalues_df["DDPG"].unstack("symbol").resample("2W").mean(), dpi=330,
-#                 filename="best_exp_sharesvalues_race_DDPG.mp4", orientation="v", interpolate_period=True,
-#                 fixed_order=True, period_length=1000, filter_column_colors=True,
-#                 fixed_max=True, steps_per_period=7, n_bars=10, cmap=colors,
-#                 title="Seperate Stock Values of DDPG over Time")
-# %%
-# bcr.bar_chart_race(df=best_exp_numshares_df["DDPG"].unstack("symbol").resample("2W").mean(), dpi=330,
-#                 filename="best_exp_numshares_race_PPO.mp4", orientation="v", interpolate_period=True,
-#                 fixed_order=True, period_length=1000, filter_column_colors=True,
-#                 fixed_max=True, steps_per_period=7, n_bars=10, cmap=colors,
-#                 title="Seperate Stock numbers of DDPG over Time")
-
-# %%
-# The dominant stocks...
-# Show the mean of each sharesvalue and plot the 10 largest.
-best_exp_sharesvalues_df["DDPG"].unstack("symbol").mean().nlargest(10).plot(title="Mean sharevalue in DDPG Portfolio", ylabel="Value", xlabel="Symbol", kind="bar",color=colors)
-
-# %%
 #### How could PPO make such a rise up in the end?
 # There must be one or more stocks that drived this rise.
 
@@ -264,7 +253,7 @@ best_exp_sharesvalues_df["DDPG"].unstack("symbol").mean().nlargest(10).plot(titl
 # %%
 # The dominant stocks...
 # Show the mean of each sharesvalue and plot the 10 largest.
-best_exp_sharesvalues_df["PPO"].unstack("symbol").mean().nlargest(10).plot(title="Mean sharevalue in PPO Portfolio", ylabel="Value", xlabel="Symbol", kind="bar",color=colors)
+best_exp_sharesvalues_df["PPO"].unstack("symbol").mean().nlargest(10).plot(title="Mean sharevalue in PPO Portfolio", ylabel="Value", xlabel="Symbol", kind="bar",color=[colors[0]])
 
 # %%
 #### What happend with A2C performance?
@@ -284,8 +273,26 @@ best_exp_sharesvalues_df["PPO"].unstack("symbol").mean().nlargest(10).plot(title
 # %%
 # The dominant stocks...
 # Show the mean of each sharesvalue and plot the 10 largest.
-best_exp_sharesvalues_df["A2C"].unstack("symbol").mean().nlargest(10).plot(title="Mean sharevalue in A2C Portfolio", ylabel="Value", xlabel="Symbol" ,kind="bar",color=colors)
+best_exp_sharesvalues_df["A2C"].unstack("symbol").mean().nlargest(10).plot(title="Mean sharevalue in A2C Portfolio", ylabel="Value", xlabel="Symbol" ,kind="bar",color=[colors[1]])
 
+# %%
+# Bar chart race for seperate symbol values
+# bcr.bar_chart_race(df=best_exp_sharesvalues_df["DDPG"].unstack("symbol").resample("2W").mean(), dpi=330,
+#                 filename="best_exp_sharesvalues_race_DDPG.mp4", orientation="v", interpolate_period=True,
+#                 fixed_order=True, period_length=1000, filter_column_colors=True,
+#                 fixed_max=True, steps_per_period=7, n_bars=10, cmap=colors,
+#                 title="Seperate Stock Values of DDPG over Time")
+# %%
+# bcr.bar_chart_race(df=best_exp_numshares_df["DDPG"].unstack("symbol").resample("2W").mean(), dpi=330,
+#                 filename="best_exp_numshares_race_PPO.mp4", orientation="v", interpolate_period=True,
+#                 fixed_order=True, period_length=1000, filter_column_colors=True,
+#                 fixed_max=True, steps_per_period=7, n_bars=10, cmap=colors,
+#                 title="Seperate Stock numbers of DDPG over Time")
+
+# %%
+# The dominant stocks...
+# Show the mean of each sharesvalue and plot the 10 largest.
+best_exp_sharesvalues_df["DDPG"].unstack("symbol").mean().nlargest(10).plot(title="Mean sharevalue in DDPG Portfolio", ylabel="Value", xlabel="Symbol", kind="bar",color=[colors[3]])
 
 # %%
 # Show the mean percentage of portfolio structur
@@ -304,6 +311,6 @@ for column in exchange_values_mean_df.columns:
     exchange_values_mean_df[column] = exchange_values_mean_df.apply(lambda x: x[column]/x["Total"], axis=1)
 exchange_values_mean_df = exchange_values_mean_df.drop(columns="Total")
 
-exchange_values_mean_df.plot(title="Mean Portfolio Structur by DRL Algorithm", ylabel="Percentage" ,kind="bar",stacked=True, legend="reverse")
+exchange_values_mean_df.plot(title="Mean Portfolio Structure by DRL Algorithm", ylabel="Percentage" ,kind="bar",stacked=True, legend="reverse",color=colors[::-1])
 
 # %%

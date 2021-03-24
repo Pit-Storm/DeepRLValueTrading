@@ -17,7 +17,7 @@ qs.extend_pandas()
 ######
 # This sets results_dir and calc of totalValue in dependence
 # of what model we want (always with fixed data)
-holiday_fix_model = True
+holiday_fix_model = False
 ######
 
 # Get tested dates out of stocksdata
@@ -36,6 +36,7 @@ else:
     results_dir = Path.cwd().parent / "results"
 tests = []
 exp_args = []
+# holiday_fix_model = True
 
 algo_dirs = [algo_dir for algo_dir in results_dir.iterdir() if algo_dir.is_dir()]
 for algo_dir in algo_dirs:
@@ -179,7 +180,7 @@ colors =    ['#377eb8', '#ff7f00', '#4daf4a',
             '#999999', '#e41a1c', '#dede00']
 
 # Plot a linechart for all portfolios resampled to monthly mean value.
-portfolios_df[show_portfolios].plot(title="Total portfolio value", xlabel="Date", ylabel="Total Value", color=colors)
+portfolios_df[show_portfolios].plot(title="Total portfolio value", legend=False, xlabel="Date", ylabel="Total Value", color=colors).figure.savefig("holiday_bug_portfolios.pdf")
 # %%
 # Bar chart race for Portfolio values
 # bcr.bar_chart_race(df=portfolios_df.resample("2W").mean(), dpi=330, cmap=colors,

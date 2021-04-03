@@ -12,22 +12,42 @@ import seaborn as sns
 # extend pandas functionality with metrics, etc.
 qs.extend_pandas()
 # %%
+######
+# SETUP
+######
+render_vids = False
 
+######
+# PREPROCESSING
+######
 
-# Get tested dates out of stocksdata
+# Load stocksdata
 stocksdata_fp = Path.cwd().parent / "data" / "stocksdata_all.csv"
 stocksdata_all_df = dth.load_data(stocksdata_fp)
 *_, stocksdata_df = dth.train_val_test_split(stocksdata_all_df)
-dates = stocksdata_df.index.get_level_values(level="date").unique().tolist()
-symbols = stocksdata_df.index.get_level_values(level="symbol").unique().tolist()
-stockprices_ser = stocksdata_df["close"].copy()
 
-###
+# Get tested dates out of stocksdata
+dates = stocksdata_df.index.get_level_values(level="date").unique().tolist()
+# Get stock prices close and open
+stockprices_close_ser = stocksdata_df["close"].copy()
+stockprices_close_ser.name = "close"
+stockprices_open_ser = stocksdata_df["open"].copy()
+stockprices_open_ser.name = "open"
+
+
+# Load indices data
+indices_fp = Path.cwd().parent / "data" / "indices_performance.csv"
+indices_df = dth.load_data(indices_fp)
+*_, indices_df = dth.train_val_test_split(indices_df)
+
+#######
+# READ TEST RESULTS
+######
+
 # Generate Multiindex DF for all test results over all experiments over all algos
 results_dir = Path.cwd().parent / "results"
 tests = []
 exp_args = []
-# holiday_fix_model = True
 
 algo_dirs = [algo_dir for algo_dir in results_dir.iterdir() if algo_dir.is_dir()]
 for algo_dir in algo_dirs:
@@ -55,6 +75,9 @@ exp_args_df = pd.DataFrame(exp_args)
 exp_args_df["exp_idx"] = exp_args_df.groupby(by="algo").cumcount()
 exp_args_df = exp_args_df.set_index(["algo","exp_idx"])
 
+###
+# Get the best Experiment by Sharpe Ratio
+
 # Get Sharpe ratio for all tests
 tests_sharpe = tests_df["totalValues"].groupby(level=["algo", "exp", "test"]).apply(qs.stats.sharpe).rename("sharpe")
 # Get mean sharpe over the tests for each run
@@ -62,27 +85,24 @@ tests_sharpe_mean = tests_sharpe.groupby(level=["algo", "exp"]).mean()
 # save best exp idx to a pandas series
 best_exp_idx = pd.Series(dict(tests_sharpe_mean.groupby(level=["algo"]).idxmax().values.tolist())).rename("best_exp_idx")
 
-# Inside the best experiment, calculate the mean totalValue by date over all tests.
-# for that we have to slice out the best exp out of our overall df
-best_exp = [tests_df["totalValues"].loc[(algo_name, exp_idx, slice(None), slice(None))] for algo_name, exp_idx in best_exp_idx.items()]
-best_exp_df = pd.concat(best_exp).reset_index(level="exp", drop=True).reorder_levels(["algo","date","test"])
-
-# Now we getting our data to make graphs and other metrics.
-best_exp_mean_df = best_exp_df.groupby(level=["algo","date"]).mean().unstack(level="algo")
-
 ###
 # Creating the best exps_args_df to show it later
-best_exp_args = [exp_args_df.loc[(algo_name, exp_idx), slice(None)] for algo_name, exp_idx in best_exp_idx.items()]
-best_exp_args_df = pd.DataFrame(best_exp_args).reset_index()
+temp = [exp_args_df.loc[(algo_name, exp_idx), slice(None)] for algo_name, exp_idx in best_exp_idx.items()]
+best_exp_args_df = pd.DataFrame(temp).reset_index()
 best_exp_args_df[['algo','exp_idx']] = pd.DataFrame(best_exp_args_df["index"].tolist(), index= best_exp_args_df.index)
 best_exp_args_df = best_exp_args_df.drop(columns="index").set_index(["algo","exp_idx"])
 
-###
-### Create indices series
-indices_fp = Path.cwd().parent / "data" / "indices_performance.csv"
-indices_df = dth.load_data(indices_fp)
-*_, indices_df = dth.train_val_test_split(indices_df)
+######
+# BUILD PORTFOLIO DF
+######
 
+# Inside the best experiment, calculate the mean totalValue by date over all tests.
+temp = [tests_df["totalValues"].loc[(algo_name, exp_idx, slice(None), slice(None))] for algo_name, exp_idx in best_exp_idx.items()]
+best_exp_totalValues_df = pd.concat(temp).reset_index(level="exp", drop=True).reorder_levels(["algo","date","test"])
+# Now we getting our data to make graphs and other metrics.
+best_exp_totalValues_df = best_exp_totalValues_df.groupby(level=["algo","date"]).mean().unstack(level="algo")
+
+### Create indices series
 stoxx50e_ser = indices_df[indices_df.index.get_level_values("symbol") == "stoxx50e"]["adjusted_close"]
 stoxx50e_ser.index = stoxx50e_ser.index.droplevel(1)
 stoxx50e_ser = stoxx50e_ser.pct_change()
@@ -101,7 +121,9 @@ dji_ser.name = "dji"
 etf_df = pd.DataFrame(index=dates)
 etf_df = etf_df.join([dji_ser, stoxx50e_ser]).fillna(0)
 # Calculate the weighted daily returns of our ETF portfolio
-etf_df["portf_ret"] = etf_df["dji"]*(1-(36/63)) + etf_df["stoxx50e"]*(36/63)
+etf_df["dji"] = etf_df["dji"]*(1-(36/63))
+etf_df["stoxx50e"] = etf_df["stoxx50e"]*(36/63)
+etf_df["portf_ret"] = etf_df["dji"] + etf_df["stoxx50e"]
 # Calculate the portfolio value
 etf_df["totalValue"] = etf_df["portf_ret"].add(1).cumprod().mul(1e6)
 
@@ -109,14 +131,15 @@ etf_ser = etf_df["totalValue"]
 etf_ser.name = "ETF"
 
 ###
-# Create a DF with all portfolio values
-# This is the DF to work with
-###
-portfolios_df = best_exp_mean_df.join(etf_ser)
+# Get all TotalValues in one DF
+portfolios_df = best_exp_totalValues_df.join(etf_ser)
 
 # %%
-###
-# Now coming to actual plotting
+######
+# SHOW RESULTS
+######
+
+# Setup the order
 drl_algos = ["DDPG","PPO","A2C"]
 basic_algos = ["BUYHOLD","RANDOM"]
 
@@ -163,45 +186,35 @@ colors =    ['#377eb8', '#ff7f00', '#4daf4a',
             '#999999', '#e41a1c', '#dede00']
 drl_colors = colors[0:2]+[colors[3]]
 
-# Plot a linechart for all portfolios resampled to monthly mean value.
-portfolios_df[show_portfolios].plot(title="Total portfolio value", legend=True, xlabel="Date", ylabel="Total Value", color=colors).figure.savefig("img/portfolios_total_value.pdf")
+# Plot a linechart for all portfolios
+portfolios_df[show_portfolios].plot(title="Total portfolio value", legend=True, xlabel="Date", ylabel="Total Value", color=colors).figure.savefig("img/all_line_totalValues.pdf")
 # %%
 # Bar chart race for Portfolio values
-bcr.bar_chart_race(df=portfolios_df.resample("2W").mean(), dpi=330, cmap=[colors[1]]+[colors[0]]+colors[2:],
-                filename="vids/best_exp_mean_totalValues_race.mp4", orientation="v",
-                fixed_order=True, period_length=1000, interpolate_period=True,
-                fixed_max=True, steps_per_period=7,
-                title="Portfolio Values over Time")
+if render_vids:
+    bcr.bar_chart_race(df=portfolios_df.resample("2W").mean(), dpi=330, cmap=[colors[1]]+[colors[0]]+colors[2:],
+                    filename="vids/all_bcr_totalValues.mp4", orientation="v",
+                    fixed_order=True, period_length=1000, interpolate_period=True,
+                    fixed_max=True, steps_per_period=7,
+                    title="Portfolio Values over Time")
 
 # %%
-########### INVESTIGATIONS
+######
+# INVESTIGATIONS
+######
 
-#### Why DDPG wasn't effected by the drop in december 2018?
-# The news can tell us, that in december 2018 the US stock market had a historical drop
-# Let's check this by plotting the reshaped performance of DJIA and EuroStoxx50
-etf_df[["dji", "stoxx50e"]].add(1).cumprod().plot(title="Trend of Indices", ylabel="Cum. Percentage", xlabel="Date", color=colors[-2:]).figure.savefig("img/indices_performance.pdf")
-# We can see a drop in DJIA, but also in EuroStoxx50...
-# %%
-# Did it hold more or less cash during the period?
+# We can investigate the following underlying numbers:
+    # Number and Value of Shares
+    # Portfolio structure grouped by exchanges (US, EU) and Cash
+    # Trading Costs
 
-# Get the Cashes of the Algorithms
-best_exp_cashes = [tests_df["cashes"].loc[(algo_name, exp_idx, slice(None), slice(None))] for algo_name, exp_idx in best_exp_idx.items()]
-best_exp_cashes_df = pd.concat(best_exp_cashes).reset_index(level="exp", drop=True).reorder_levels(["algo","date","test"])
-best_exp_cashes_df = best_exp_cashes_df.groupby(level=["algo","date"]).mean().unstack(level="algo")
+######
+# NUMBER AND VALUE OF SHARES
 
-# Plot the Cashes over time resampled to weekly mean value
-best_exp_cashes_df[drl_algos].resample("M").mean().plot(ylim=[100,400], title="Portfolio Cash (monthly mean", xlabel="Date", ylabel="Total Cash", color=drl_colors).figure.savefig("img/drl_cash.pdf")
-# %%
-# And for better comparison show the totalValue over time resampled to weekly mean value
-portfolios_df[drl_algos].resample("M").mean().plot(title="Total portfolio value (monthly mean)", ylabel="Total Value", xlabel="Date", color=drl_colors).figure.savefig("img/drl_total_mean_monthly.pdf")
-# %%
-# What stocks did DDPG hold during that period?
-
-# Get numShares in a multilevel DF for DDPG and PPO
-best_exp_numshares = [tests_df["numShares"].loc[(algo_name, exp_idx, slice(None), slice(None))] for algo_name, exp_idx in best_exp_idx.items()]
-best_exp_numshares_df = pd.concat(best_exp_numshares).reset_index(level="exp", drop=True).reorder_levels(["algo","date","test"]).to_frame()
+# Get numShares in a multilevel DF
+temp = [tests_df["numShares"].loc[(algo_name, exp_idx, slice(None), slice(None))] for algo_name, exp_idx in best_exp_idx.items()]
+best_exp_numshares_df = pd.concat(temp).reset_index(level="exp", drop=True).reorder_levels(["algo","date","test"]).to_frame()
 # explode list fields to columns
-best_exp_numshares_df = pd.DataFrame(data=best_exp_numshares_df["numShares"].values.tolist(), columns=stockprices_ser.index.get_level_values(level="symbol").unique().tolist(),index=best_exp_numshares_df.index)
+best_exp_numshares_df = pd.DataFrame(data=best_exp_numshares_df["numShares"].values.tolist(), columns=stockprices_close_ser.index.get_level_values(level="symbol").unique().tolist(),index=best_exp_numshares_df.index)
 # swap axis of test (index) and algo (column)
 best_exp_numshares_df = best_exp_numshares_df.unstack(level="test").stack(level=None)
 # reorder index levels
@@ -211,108 +224,78 @@ best_exp_numshares_df = best_exp_numshares_df.mean(axis=1).round().astype("int")
 # copy to new df, because we want to have sharesvalues additionally
 best_exp_sharesvalues_df = best_exp_numshares_df.copy()
 
-# Get closing price and caclulate the stock value in portfolio
-stockprices_ser.name = "close"
-best_exp_sharesvalues_df = best_exp_sharesvalues_df.join(stockprices_ser)
+# Get closing price and calculate the stock value in portfolio
+best_exp_sharesvalues_df = best_exp_sharesvalues_df.join(stockprices_close_ser)
 for algo in drl_algos+basic_algos:
     best_exp_sharesvalues_df[algo] = best_exp_sharesvalues_df[algo] * best_exp_sharesvalues_df["close"]
 best_exp_sharesvalues_df = best_exp_sharesvalues_df.drop(columns="close")
 # %%
-# Bar chart race for seperate symbol values
-bcr.bar_chart_race(df=best_exp_sharesvalues_df["DDPG"].unstack("symbol").resample("2W").mean(), dpi=330,
-                filename="vids/best_exp_sharesvalues_race_DDPG.mp4", orientation="v", interpolate_period=True,
-                fixed_order=True, period_length=1000, filter_column_colors=True,
-                fixed_max=True, steps_per_period=7, n_bars=10, cmap=[drl_colors[0]],
-                title="Seperate Stock Values of DDPG over Time")
-# %%
-bcr.bar_chart_race(df=best_exp_numshares_df["DDPG"].unstack("symbol").resample("2W").mean(), dpi=330,
-                filename="vids/best_exp_numshares_race_PPO.mp4", orientation="v", interpolate_period=True,
-                fixed_order=True, period_length=1000, filter_column_colors=True,
-                fixed_max=True, steps_per_period=7, n_bars=10, cmap=[drl_colors[0]],
-                title="Seperate Stock numbers of DDPG over Time")
+for idx,algo in enumerate(drl_algos):
+    if render_vids:
+        # Bar chart race for seperate symbol values
+        bcr.bar_chart_race(df=best_exp_sharesvalues_df[algo].unstack("symbol").resample("2W").mean(), dpi=330,
+                        filename="vids/"+algo+"_bcr_sharesvalues.mp4", orientation="v", interpolate_period=True,
+                        fixed_order=True, period_length=1000, filter_column_colors=True,
+                        fixed_max=True, steps_per_period=7, n_bars=10, cmap=[drl_colors[idx]],
+                        title="Seperate Stock Values of "+algo+" over Time")
+        # Bar chart race for seperate symbol number of shares
+        bcr.bar_chart_race(df=best_exp_numshares_df[algo].unstack("symbol").resample("2W").mean(), dpi=330,
+                        filename="vids/"+algo+"_bcr_numshares.mp4", orientation="v", interpolate_period=True,
+                        fixed_order=True, period_length=1000, filter_column_colors=True,
+                        fixed_max=True, steps_per_period=7, n_bars=10, cmap=[drl_colors[idx]],
+                        title="Seperate Stock numbers of "+algo+" over Time")
+
+
+    # Show the mean of each sharesvalue and plot the 10 largest.
+    best_exp_sharesvalues_df[algo].unstack("symbol").mean().nlargest(10).plot(title="Mean sharevalue in "+algo+" Portfolio", ylabel="Value", xlabel="Symbol", kind="bar",color=drl_colors[idx]).figure.savefig("img/"+algo+"_bar_top10_shares_values.pdf")
+    # Show the mean of each numshares and plot the 10 largest.
+    best_exp_numshares_df[algo].unstack("symbol").mean().nlargest(10).plot(title="Mean count of Shares in "+algo+" Portfolio", ylabel="Count", xlabel="Symbol", kind="bar",color=drl_colors[idx]).figure.savefig("img/"+algo+"_bar_top10_shares_counts.pdf")
 
 # %%
-# The dominant stocks...
-# Show the mean of each sharesvalue and plot the 10 largest.
-best_exp_sharesvalues_df["DDPG"].unstack("symbol").mean().nlargest(10).plot(title="Mean sharevalue in DDPG Portfolio", ylabel="Value", xlabel="Symbol", kind="bar",color=drl_colors[0]).figure.savefig("img/ddpg_shares_values_mean.pdf")
+######
+# PORTFOLIO STRUCTURE
 
-# %%
-#### How could PPO make such a rise up in the end?
-# There must be one or more stocks that drived this rise.
+# cash 
 
-bcr.bar_chart_race(df=best_exp_sharesvalues_df["PPO"].unstack("symbol").resample("2W").mean(), dpi=330,
-                filename="vids/best_exp_sharesvalues_race_PPO.mp4", orientation="v", interpolate_period=True,
-                fixed_order=True, period_length=1000, filter_column_colors=True,
-                fixed_max=True, steps_per_period=7, n_bars=10, cmap=[drl_colors[1]],
-                 title="Seperate Stock Values of PPO over Time")
-# %%
-bcr.bar_chart_race(df=best_exp_numshares_df["PPO"].unstack("symbol").resample("2W").mean(), dpi=330,
-                filename="vids/best_exp_numshares_race_PPO.mp4", orientation="v", interpolate_period=True,
-                fixed_order=True, period_length=1000, filter_column_colors=True,
-                fixed_max=True, steps_per_period=7, n_bars=10, cmap=[drl_colors[1]],
-                title="Seperate Stock numbers of PPO over Time")
+# Get the Cashes of the Algorithms
+temp = [tests_df["cashes"].loc[(algo_name, exp_idx, slice(None), slice(None))] for algo_name, exp_idx in best_exp_idx.items()]
+best_exp_cashes_df = pd.concat(temp).reset_index(level="exp", drop=True).reorder_levels(["algo","date","test"])
+best_exp_cashes_df = best_exp_cashes_df.groupby(level=["algo","date"]).mean().unstack(level="algo")
 
-# %%
-# The dominant stocks...
-# Show the mean of each sharesvalue and plot the 10 largest.
-best_exp_sharesvalues_df["PPO"].unstack("symbol").mean().nlargest(10).plot(title="Mean sharevalue in PPO Portfolio", ylabel="Value", xlabel="Symbol", kind="bar",color=[drl_colors[1]]).figure.savefig("img/ppo_shares_values_mean.pdf")
+######
+# Structure
 
-# %%
-#### What happend with A2C performance?
-bcr.bar_chart_race(df=best_exp_sharesvalues_df["A2C"].unstack("symbol").resample("2W").mean(), dpi=330,
-                filename="vids/best_exp_sharesvalues_race_A2C.mp4", orientation="v", interpolate_period=True,
-                fixed_order=True, period_length=1000, filter_column_colors=True,
-                fixed_max=True, steps_per_period=7, n_bars=10, cmap=[drl_colors[2]],
-                title="Seperate Stock Values of A2C over Time")
-# %%
-bcr.bar_chart_race(df=best_exp_numshares_df["A2C"].unstack("symbol").resample("2W").mean(), dpi=330,
-                filename="vids/best_exp_numshares_race_A2C.mp4", orientation="v", interpolate_period=True,
-                fixed_order=True, period_length=1000, filter_column_colors=True,
-                fixed_max=True, steps_per_period=7, n_bars=10, cmap=[drl_colors[2]],
-                title="Seperate Stock Values of A2C over Time")
-
-# %%
-# The dominant stocks...
-# Show the mean of each sharesvalue and plot the 10 largest.
-best_exp_sharesvalues_df["A2C"].unstack("symbol").mean().nlargest(10).plot(title="Mean sharevalue in A2C Portfolio", ylabel="Value", xlabel="Symbol" ,kind="bar",color=drl_colors[2]).figure.savefig("img/a2c_shares_values_mean.pdf")
-
-# %%
-# Show the mean percentage of portfolio structur
 with open(Path.cwd().parent / "etl" / "stocks.txt") as file:
     symb_exchange = file.read().splitlines()
+stocks_df = pd.DataFrame([item.split(".") for item in symb_exchange], columns=["symbol","exchange"]).set_index("symbol")["exchange"].apply(lambda x: "EU" if x != "US" else x)
 
-stocks = pd.DataFrame([item.split(".") for item in symb_exchange], columns=["symbol","exchange"]).set_index("symbol")["exchange"].apply(lambda x: "EU" if x != "US" else x)
-
-temp = [pd.Series(data=best_exp_sharesvalues_df[algo].unstack("symbol").mean().nlargest(10), name=algo) for algo in drl_algos]
-exchange_values_mean_df = (pd.DataFrame(data=temp).T.sort_index().rename_axis(index="symbol").fillna(best_exp_sharesvalues_df.unstack("symbol").mean().unstack().T) \
-    .join(stocks).set_index("exchange").sort_index().groupby(by="exchange").sum().T)
-exchange_values_mean_df["Total"] = portfolios_df[drl_algos].mean()
-exchange_values_mean_df["Cash"] = exchange_values_mean_df.apply(lambda x: x["Total"] - (x["EU"]+x["US"]), axis=1)
-exchange_values_mean_df = exchange_values_mean_df[["EU","US","Cash","Total"]]
-for column in exchange_values_mean_df.columns:
-    exchange_values_mean_df[column] = exchange_values_mean_df.apply(lambda x: x[column]/x["Total"], axis=1)
-exchange_values_mean_df = exchange_values_mean_df.drop(columns="Total")
-
-exchange_values_mean_df.sort_index().plot(title="Mean Portfolio Structure by DRL Algorithm", ylabel="Percentage" ,kind="bar",stacked=True, legend="reverse",color=colors[::-1]).figure.savefig("img/drl_portfolio_structure_mean.pdf")
-
-# %%
 exchange_values_df = best_exp_sharesvalues_df.stack().copy()
 exchange_values_df.index.names = ["date","symbol","algo"]
 exchange_values_df.name = "value"
 
-temp_cashes = best_exp_cashes_df.stack().copy()
-temp_cashes.name = ("value","Cash")
+temp = best_exp_cashes_df.stack().copy()
+temp.name = ("value","Cash")
 
-exchange_values_df = exchange_values_df.reset_index(["date","algo"]).join(stocks).reset_index().set_index(["date","algo","exchange"]).drop(columns=["symbol"]).sort_index().groupby(["algo","date","exchange"]).sum().unstack("exchange").join(temp_cashes)
+exchange_values_df = exchange_values_df.reset_index(["date","algo"]).join(stocks_df).reset_index().set_index(["date","algo","exchange"]).drop(columns=["symbol"]).sort_index().groupby(["algo","date","exchange"]).sum().unstack("exchange").join(temp)
+exchange_values_df.columns = exchange_values_df.columns.droplevel(None)
 
-exchange_values_df[("value","Total")] = exchange_values_df[("value","US")] + exchange_values_df[("value","EU")] + exchange_values_df[("value","Cash")]
-for column in exchange_values_df.columns:
-    exchange_values_df[column] = exchange_values_df.apply(lambda x: x[column]/x[("value","Total")], axis=1)
-
-exchange_values_df = exchange_values_df.drop(columns=("value","Total"))
+# Show absolute Structure of Portfolios
+for algo in exchange_values_df.index.get_level_values(level="algo").unique().tolist():
+    exchange_values_df.loc[(algo,slice(None)),slice(None)].plot(kind="area", title="Portfolio Structure of "+algo, ylabel="Value", legend="reverse",color=colors[::-1]).figure.savefig("img/"+algo+"_area_value_portfolio_structure.pdf")
 # %%
-exchange_values_df.groupby("algo").plot(kind="box")
-# This plots on the one hand opens up some questions
+# And for better comparison the percentage of total structure
+exchange_pct_df = exchange_values_df.copy()
+exchange_pct_df["Total"] = exchange_pct_df["US"] + exchange_pct_df["EU"] + exchange_pct_df["Cash"]
+for column in exchange_pct_df.columns:
+    exchange_pct_df[column] = exchange_pct_df.apply(lambda x: x[column]/x["Total"], axis=1)
+
+exchange_pct_df = exchange_pct_df.drop(columns="Total")
+
+# Show it...
+for algo in exchange_pct_df.index.get_level_values(level="algo").unique().tolist():
+    exchange_pct_df.loc[(algo,slice(None)),slice(None)].plot(kind="area", title="Portfolio Structure of "+algo, ylabel="Percentage", legend="reverse",color=colors[::-1]).figure.savefig("img/"+algo+"_area_pct_portfolio_structure.pdf")
+
+# These plots on the one hand opens up some questions
 # and on the other hand shows aspects very clearly
 
 # Clear Aspects
@@ -327,25 +310,25 @@ exchange_values_df.groupby("algo").plot(kind="box")
 # The question is (if the assumptions are true): Did DDPG and PPO found that out and picked the good ones / threw the bad ones away?
 
 # %%
+######
+# TRADING COSTS
+######
+
 # A completely different Question is about the produced costs
 # What algorithm traded the most cost effective?
-# ... produced the most costs?
-# ... made the minimum trades?
 
-# Firstly checkout the Trades
+# Firstly we need the trades
 best_exp_trades_df = best_exp_numshares_df.groupby(by="symbol").diff().fillna(0)
 
-best_exp_trades_df.abs().groupby(by="date").sum().cumsum()[show_portfolios[:-1]].resample("W").mean().plot(color=colors, xlabel="Date", ylabel="Trades", title="Cummulative Number of Trades").figure.savefig("img/number_of_trades.pdf")
-# %%
-# Secondly the costs
+# and secondly we need the costs
 best_exp_costs_df = best_exp_trades_df.copy()
-stockopen_ser = stocksdata_df["open"].copy()
-stockopen_ser.name = "open"
-best_exp_costs_df = best_exp_costs_df.join(stockopen_ser)
+best_exp_costs_df = best_exp_costs_df.join(stockprices_open_ser)
 
 for algo in drl_algos+basic_algos:
     best_exp_costs_df[algo] = best_exp_costs_df[algo].abs() * best_exp_costs_df["open"] * best_exp_args_df.loc[(algo,slice(None)),"fee"].values[0]
 best_exp_costs_df = best_exp_costs_df.drop(columns="open")
 
-best_exp_costs_df.groupby(by="date").sum().cumsum()[show_portfolios[:-1]].resample("W").mean().plot(color=colors, xlabel="Date", ylabel="Costs", title="Cummulative Trading Costs").figure.savefig("img/trading_costs.pdf")
+# Show the Marginal costs per trade over time
+# Marginal costs determine how effective the trades has been made in conjuntion to costs
+(best_exp_costs_df.groupby(by="date").sum().cumsum() / best_exp_trades_df.abs().groupby(by="date").sum().cumsum())[show_portfolios[:-1]].plot(ylabel="Cost/Trade", title="Marginal Cost per Trade over Time", color=colors, xlabel="Date").figure.savefig("img/all_line_marginal_trading_costs.pdf")
 # %%

@@ -34,6 +34,11 @@ stockprices_close_ser.name = "close"
 stockprices_open_ser = stocksdata_df["open"].copy()
 stockprices_open_ser.name = "open"
 
+# Get stocks and exchanges
+with open(Path.cwd().parent / "etl" / "stocks.txt") as file:
+    symb_exchange = file.read().splitlines()
+stocks_df = pd.DataFrame([item.split(".") for item in symb_exchange], columns=["symbol","exchange"]).set_index("symbol")["exchange"].apply(lambda x: "EU" if x != "US" else x)
+
 
 # Load indices data
 indices_fp = Path.cwd().parent / "data" / "indices_performance.csv"
@@ -187,7 +192,7 @@ colors =    ['#377eb8', '#ff7f00', '#4daf4a',
 drl_colors = colors[0:2]+[colors[3]]
 
 # Plot a linechart for all portfolios
-portfolios_df[show_portfolios].plot(title="Total portfolio value", legend=True, xlabel="Date", ylabel="Total Value", color=colors).figure.savefig("img/all_line_totalValues.pdf")
+portfolios_df[show_portfolios].plot(title="Total portfolio value", legend=True, xlabel="Date", ylabel="Total Value", color=colors).figure.savefig("img/all_line_totalValues.pdf", bbox_inches="tight")
 # %%
 # Bar chart race for Portfolio values
 if render_vids:
@@ -245,11 +250,8 @@ for idx,algo in enumerate(drl_algos):
                         fixed_max=True, steps_per_period=7, n_bars=10, cmap=[drl_colors[idx]],
                         title="Seperate Stock numbers of "+algo+" over Time")
 
-
-    # Show the mean of each sharesvalue and plot the 10 largest.
-    best_exp_sharesvalues_df[algo].unstack("symbol").mean().nlargest(10).plot(title="Mean sharevalue in "+algo+" Portfolio", ylabel="Value", xlabel="Symbol", kind="bar",color=drl_colors[idx]).figure.savefig("img/"+algo+"_bar_top10_shares_values.pdf")
     # Show the mean of each numshares and plot the 10 largest.
-    best_exp_numshares_df[algo].unstack("symbol").mean().nlargest(10).plot(title="Mean count of Shares in "+algo+" Portfolio", ylabel="Count", xlabel="Symbol", kind="bar",color=drl_colors[idx]).figure.savefig("img/"+algo+"_bar_top10_shares_counts.pdf")
+    best_exp_numshares_df[algo].unstack("symbol").mean().nlargest(10).plot(title="Mean count of Shares in "+algo+" Portfolio", ylabel="Count", xlabel="Symbol", kind="bar",color=drl_colors[idx]).figure.savefig("img/"+algo+"_bar_top10_shares_counts.pdf", bbox_inches="tight")
 
 # %%
 ######
@@ -265,10 +267,6 @@ best_exp_cashes_df = best_exp_cashes_df.groupby(level=["algo","date"]).mean().un
 ######
 # Structure
 
-with open(Path.cwd().parent / "etl" / "stocks.txt") as file:
-    symb_exchange = file.read().splitlines()
-stocks_df = pd.DataFrame([item.split(".") for item in symb_exchange], columns=["symbol","exchange"]).set_index("symbol")["exchange"].apply(lambda x: "EU" if x != "US" else x)
-
 exchange_values_df = best_exp_sharesvalues_df.stack().copy()
 exchange_values_df.index.names = ["date","symbol","algo"]
 exchange_values_df.name = "value"
@@ -279,9 +277,24 @@ temp.name = ("value","Cash")
 exchange_values_df = exchange_values_df.reset_index(["date","algo"]).join(stocks_df).reset_index().set_index(["date","algo","exchange"]).drop(columns=["symbol"]).sort_index().groupby(["algo","date","exchange"]).sum().unstack("exchange").join(temp)
 exchange_values_df.columns = exchange_values_df.columns.droplevel(None)
 
+# Include ETF portfolio structure
+etf_portf_df = pd.concat([dji_ser, stoxx50e_ser], axis=1).fillna(0)
+etf_portf_df["EU"] = 1e6*(36/63)
+etf_portf_df["US"] = 1e6*(1-(36/63))
+etf_portf_df["EU"] = etf_portf_df["stoxx50e"].add(1).cumprod() * etf_portf_df["EU"]
+etf_portf_df["US"] = etf_portf_df["dji"].add(1).cumprod() * etf_portf_df["US"]
+etf_portf_df["Cash"] = 0
+etf_portf_df = etf_portf_df.drop(columns=["dji","stoxx50e"])
+etf_portf_df["algo"] = "ETF"
+etf_portf_df = etf_portf_df.reset_index().set_index(["algo","Date"])
+etf_portf_df.index.names = ["algo","date"]
+etf_portf_df.columns.names = ["exchange"]
+
+exchange_values_df = exchange_values_df.append(etf_portf_df).sort_index()
+
 # Show absolute Structure of Portfolios
 for algo in exchange_values_df.index.get_level_values(level="algo").unique().tolist():
-    exchange_values_df.loc[(algo,slice(None)),slice(None)].plot(kind="area", title="Portfolio Structure of "+algo, ylabel="Value", legend="reverse",color=colors[::-1]).figure.savefig("img/"+algo+"_area_value_portfolio_structure.pdf")
+    exchange_values_df.loc[(algo,slice(None)),slice(None)].droplevel("algo").plot(kind="area", title="Portfolio Structure of "+algo, ylabel="Value", xlabel="Date", legend="reverse",color=colors[::-1]).figure.savefig("img/"+algo+"_area_value_portfolio_structure.pdf", bbox_inches="tight")
 # %%
 # And for better comparison the percentage of total structure
 exchange_pct_df = exchange_values_df.copy()
@@ -293,22 +306,7 @@ exchange_pct_df = exchange_pct_df.drop(columns="Total")
 
 # Show it...
 for algo in exchange_pct_df.index.get_level_values(level="algo").unique().tolist():
-    exchange_pct_df.loc[(algo,slice(None)),slice(None)].plot(kind="area", title="Portfolio Structure of "+algo, ylabel="Percentage", legend="reverse",color=colors[::-1]).figure.savefig("img/"+algo+"_area_pct_portfolio_structure.pdf")
-
-# These plots on the one hand opens up some questions
-# and on the other hand shows aspects very clearly
-
-# Clear Aspects
-# DDPG and PPO found out which stocks to trade for a positive effect to the portfolio
-# A2C didn't found this out that concisely
-
-# New Questions:
-# DDPG and PPO had more portion of EU Stocks than US ones
-# But the Euro Stoxx 50 didn't went that good in the second half of testing period
-# One assumption could be, that in DJIA had been a few stocks that propelled the index
-# On the other side in EStoxx50 it could be that there heavy weighted titles that throttled the index
-# The question is (if the assumptions are true): Did DDPG and PPO found that out and picked the good ones / threw the bad ones away?
-
+    exchange_pct_df.loc[(algo,slice(None)),slice(None)].droplevel("algo").plot(kind="area", title="Portfolio Structure of "+algo, ylabel="Percentage", xlabel="Date", legend="reverse",color=colors[::-1]).figure.savefig("img/"+algo+"_area_pct_portfolio_structure.pdf", bbox_inches="tight")
 # %%
 ######
 # TRADING COSTS
@@ -330,5 +328,5 @@ best_exp_costs_df = best_exp_costs_df.drop(columns="open")
 
 # Show the Marginal costs per trade over time
 # Marginal costs determine how effective the trades has been made in conjuntion to costs
-(best_exp_costs_df.groupby(by="date").sum().cumsum() / best_exp_trades_df.abs().groupby(by="date").sum().cumsum())[show_portfolios[:-1]].plot(ylabel="Cost/Trade", title="Marginal Cost per Trade over Time", color=colors, xlabel="Date").figure.savefig("img/all_line_marginal_trading_costs.pdf")
+(best_exp_costs_df.groupby(by="date").sum().cumsum() / best_exp_trades_df.abs().groupby(by="date").sum().cumsum())[show_portfolios[:-1]].plot(ylabel="Cost/Trade", title="Marginal Cost per Trade over Time", color=colors, xlabel="Date").figure.savefig("img/all_line_marginal_trading_costs.pdf", bbox_inches="tight")
 # %%

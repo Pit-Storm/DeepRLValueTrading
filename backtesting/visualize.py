@@ -154,11 +154,15 @@ mean_sharpes_df = tests_sharpe_mean.unstack(level=["algo"])
 color_gradient = sns.light_palette("green", as_cmap=True)
 # Apply color gradient to columns of mean_sharpes_df
 mean_sharpes_df[drl_algos].T.style.background_gradient(cmap=color_gradient, axis=1).set_precision(2)
-
+# %%
+# export to .tex file
+mean_sharpes_df[drl_algos].to_latex(buf="mean_sharpes.tex", float_format="%.2f", index_names=False, decimal=",", caption="Sharpe-Ratio Mittelwerte aller Experimente über 25 Testläufe.\\Quelle: Eigene Darstellung.", label="tab:exp-mean-sharpes")
 # %%
 # Showing the variant args of the best experiments
 variant_args = ["cagr", "episodic","num_stacks", "trainsampling"]
 best_exp_args_df[variant_args].loc[drl_algos]
+# %%
+best_exp_args_df[variant_args].loc[drl_algos].droplevel("exp_idx").to_latex(buf="best_exp_args.tex", float_format="%.2f", index_names=False, decimal=",", caption="Umgebungsparameter des besten Experiments je Algorithmus.\\\\Quelle: Eigene Darstellung.", label="tab:best-exp-args")
 # %%
 # Table for evaluation of best experiments for algos and Bench with:
     # Comp. overall Return
@@ -183,7 +187,8 @@ metrics_df[show_portfolios].style.background_gradient(cmap=color_gradient, axis=
 # This is because of the survivor bias.
 # We choosed only stocks that lived from 2000 to end 2019
 # but the ETF contains loosers.
-
+# %%
+metrics_df[show_portfolios].to_latex(buf="best_exp_metrics.tex", float_format="%.2f", index_names=False, decimal=",", caption="Darstellung der Performancemaße für alle DRL-Algorithmen und die Benchmarks.\\\\Quelle: Eigene Darstellung.", label="tab:best-exp-metrics")
 # %%
 # ColorBlind/friendly colormap from https://gist.github.com/thriveth/8560036
 colors =    ['#377eb8', '#ff7f00', '#4daf4a',
@@ -192,7 +197,7 @@ colors =    ['#377eb8', '#ff7f00', '#4daf4a',
 drl_colors = colors[0:2]+[colors[3]]
 
 # Plot a linechart for all portfolios
-portfolios_df[show_portfolios].plot(title="Total portfolio value", legend=True, xlabel="Date", ylabel="Total Value", color=colors).figure.savefig("img/all_line_totalValues.pdf", bbox_inches="tight")
+portfolios_df[show_portfolios].plot(title=None, legend=True, xlabel="", ylabel=None, color=colors).figure.savefig("img/all_line_totalValues.pdf", bbox_inches="tight")
 # %%
 # Bar chart race for Portfolio values
 if render_vids:
@@ -306,7 +311,7 @@ exchange_pct_df = exchange_pct_df.drop(columns="Total")
 
 # Show it...
 for algo in exchange_pct_df.index.get_level_values(level="algo").unique().tolist():
-    exchange_pct_df.loc[(algo,slice(None)),slice(None)].droplevel("algo").plot(kind="area", title="Portfolio Structure of "+algo, ylabel="Percentage", xlabel="Date", legend="reverse",color=colors[::-1]).figure.savefig("img/"+algo+"_area_pct_portfolio_structure.pdf", bbox_inches="tight")
+    exchange_pct_df.loc[(algo,slice(None)),slice(None)].droplevel("algo").plot(kind="area", title=None, ylabel="", xlabel="", legend="reverse",color=colors[::-1]).figure.savefig("img/"+algo+"_area_pct_portfolio_structure.pdf", bbox_inches="tight")
 # %%
 ######
 # TRADING COSTS
@@ -328,5 +333,5 @@ best_exp_costs_df = best_exp_costs_df.drop(columns="open")
 
 # Show the Marginal costs per trade over time
 # Marginal costs determine how effective the trades has been made in conjuntion to costs
-(best_exp_costs_df.groupby(by="date").sum().cumsum() / best_exp_trades_df.abs().groupby(by="date").sum().cumsum())[show_portfolios[:-1]].plot(ylabel="Cost/Trade", title="Marginal Cost per Trade over Time", color=colors, xlabel="Date").figure.savefig("img/all_line_marginal_trading_costs.pdf", bbox_inches="tight")
+(best_exp_costs_df.groupby(by="date").sum().cumsum() / best_exp_trades_df.abs().groupby(by="date").sum().cumsum())[show_portfolios[:-1]].plot(ylabel="", title=None, color=colors, xlabel="", legend=False).figure.savefig("img/all_line_marginal_trading_costs.pdf", bbox_inches="tight")
 # %%

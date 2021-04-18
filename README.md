@@ -23,9 +23,9 @@ There are lot more parameters you can pass to the script. Just run `python main.
 
 ## Run experiments programatically
 
-You can run some experiments programatically by modifieing and running `run_experiment.py`.
+You can run some experiments programatically by modifying and running `run_experiment.py`.
 
-It generates CL-Commands for configurations you want to test on. Although it uses multiprocessing to leverage the training speed. It is best for letting it run on a server.
+It generates CLI-Commands for configurations you want to test on. Although it uses multiprocessing to leverage the training speed. It is best for letting it run on a server.
 
 ## Contact
 
@@ -33,7 +33,7 @@ I'm open for questions and discussions. Just open a github issue.
 
 ## Disclaimer
 
-Useage of the software on your own risk. There are no warranties for anything!
+Usage of the software on your own risk. There are no warranties for anything!
 
 ## License
 
